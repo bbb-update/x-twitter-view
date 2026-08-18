@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.12
+// @version      2.13
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -1288,7 +1288,7 @@
 
             z-index: 2147483646;
 
-            width: 270px;
+            width: 260px;
 
             padding: 14px;
 
@@ -1401,7 +1401,7 @@
             text.mediaNote;
 
         mediaNote.style.cssText = `
-            margin-top: -2px;
+            margin-top: -7px;
             margin-bottom: 0px;
             padding-right: 4px;
 
