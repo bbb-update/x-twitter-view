@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.13
+// @version      2.14
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -1933,7 +1933,7 @@
             wrapper.style.cssText = `
                 position: absolute;
 
-                top: 53px;
+                top: 51px;
                 right: 9px;
 
                 z-index: 21;
