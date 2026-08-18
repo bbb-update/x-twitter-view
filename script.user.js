@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.1
+// @version      2.11
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
 // @match        https://twitter.com/*
 // @run-at       document-start
 // @grant        unsafeWindow
+// @grant        GM_getValue
+// @grant        GM_setValue
 // @updateURL    https://raw.githubusercontent.com/bbb-update/x-twitter-view/main/script.user.js
 // @downloadURL  https://raw.githubusercontent.com/bbb-update/x-twitter-view/main/script.user.js
 // ==/UserScript==
