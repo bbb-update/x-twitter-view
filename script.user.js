@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.14
+// @version      2.2
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -76,6 +76,16 @@
     // 6 = Green  #00ba7c
     //
     const DEFAULT_BUTTON_COLOR_THEME = 1;
+    //
+    // ============================================================
+
+    // ============================================================
+    // 5. リポスト（リツイート）時刻表示 / Repost (Retweet) Timestamp
+    //
+    // O = 表示 / Show
+    // X = 非表示 / Hide
+    //
+    const DEFAULT_SHOW_REPOST_TIMESTAMP = 'X';
     //
     // ============================================================
 
@@ -171,6 +181,14 @@
                 'buttonColorTheme',
                 DEFAULT_BUTTON_COLOR_THEME
             )
+        ),
+
+        showRepostTimestamp: normalizeOnOff(
+            GM_getValue(
+                'showRepostTimestamp',
+                DEFAULT_SHOW_REPOST_TIMESTAMP
+            ),
+            DEFAULT_SHOW_REPOST_TIMESTAMP
         )
     };
 
@@ -210,6 +228,10 @@
 
             colorTheme: normalizeColorTheme(
                 nextSettings.colorTheme
+            ),
+            showRepostTimestamp: normalizeOnOff(
+                nextSettings.showRepostTimestamp,
+                DEFAULT_SHOW_REPOST_TIMESTAMP
             )
         };
 
@@ -231,6 +253,11 @@
         GM_setValue(
             'buttonColorTheme',
             userSettings.colorTheme
+        );
+
+        GM_setValue(
+            'showRepostTimestamp',
+            userSettings.showRepostTimestamp
         );
     }
 
@@ -1146,6 +1173,8 @@
                 likes: 'いいね欄 移動ボタン',
                 language: '表示言語',
                 color: 'カラー',
+                repostTimestamp:
+                    'リポスト(RT) 時刻表示',
                 cancel: 'キャンセル',
                 save: '保存',
                 settings: '設定'
@@ -1160,6 +1189,8 @@
             likes: 'Likes Navigation button',
             language: 'Language',
             color: 'Color',
+            repostTimestamp:
+                'Repost (RT) Timestamp',
             cancel: 'Cancel',
             save: 'Save',
             settings: 'Settings'
@@ -1592,6 +1623,46 @@
         popup.appendChild(colorRow);
 
         // --------------------------------------------------------
+        // Repost (Retweet) Timestamp
+        // --------------------------------------------------------
+
+        const repostTimestampRow =
+            createRow(
+                text.repostTimestamp
+            );
+
+        const repostTimestampCheckbox =
+            document.createElement(
+                'input'
+            );
+
+        repostTimestampCheckbox.type =
+            'checkbox';
+
+        repostTimestampCheckbox.checked =
+            isEnabled(
+                userSettings.showRepostTimestamp
+            );
+
+        repostTimestampCheckbox.style.cssText = `
+            width: 17px;
+            height: 17px;
+
+            accent-color:
+                ${getAccentColor()};
+
+            cursor: pointer;
+        `;
+
+        repostTimestampRow.appendChild(
+            repostTimestampCheckbox
+        );
+
+        popup.appendChild(
+            repostTimestampRow
+        );
+
+        // --------------------------------------------------------
         // Footer
         // --------------------------------------------------------
 
@@ -1703,6 +1774,11 @@
                             ? 'O'
                             : 'X',
 
+                    showRepostTimestamp:
+                        repostTimestampCheckbox.checked
+                            ? 'O'
+                            : 'X',
+
                     language:
                         languageSelect.value,
 
@@ -1719,6 +1795,7 @@
                 rebuildShortcutButtons();
                 refreshSettingsButton();
                 ensureSettingsButton();
+                refreshRepostTimestamps();
             }
         );
 
@@ -2087,6 +2164,410 @@
                 closeSettingsPopup();
             }
         }
+    );
+
+    // ============================================================
+    // Repost (Retweet) Timestamp
+    // ============================================================
+
+    const pageWindow =
+        unsafeWindow;
+
+    const repostTimes =
+        new Map();
+
+    function scanRepostObject(obj) {
+        if (
+            !obj ||
+            typeof obj !== 'object'
+        ) {
+            return;
+        }
+
+        try {
+            const legacy =
+                obj.legacy;
+
+            if (
+                legacy &&
+                legacy.created_at &&
+                legacy.retweeted_status_result
+            ) {
+                let original =
+                    legacy
+                        .retweeted_status_result
+                        .result;
+
+                if (
+                    original &&
+                    original.__typename ===
+                        'TweetWithVisibilityResults'
+                ) {
+                    original =
+                        original.tweet;
+                }
+
+                let id = null;
+
+                if (original) {
+                    if (original.rest_id) {
+                        id =
+                            original.rest_id;
+                    }
+                    else if (
+                        original.legacy &&
+                        original.legacy.id_str
+                    ) {
+                        id =
+                            original.legacy.id_str;
+                    }
+                }
+
+                if (id) {
+                    const date =
+                        new Date(
+                            legacy.created_at
+                        );
+
+                    if (
+                        !Number.isNaN(
+                            date.getTime()
+                        )
+                    ) {
+                        repostTimes.set(
+                            String(id),
+                            date
+                        );
+                    }
+                }
+            }
+
+        } catch (e) {}
+
+        if (Array.isArray(obj)) {
+            for (const item of obj) {
+                scanRepostObject(
+                    item
+                );
+            }
+        }
+        else {
+            for (
+                const value of
+                Object.values(obj)
+            ) {
+                if (
+                    value &&
+                    typeof value ===
+                        'object'
+                ) {
+                    scanRepostObject(
+                        value
+                    );
+                }
+            }
+        }
+    }
+
+    function formatRepostDate(date) {
+        const y =
+            String(
+                date.getFullYear()
+            ).slice(-2);
+
+        const m =
+            String(
+                date.getMonth() + 1
+            ).padStart(
+                2,
+                '0'
+            );
+
+        const d =
+            String(
+                date.getDate()
+            ).padStart(
+                2,
+                '0'
+            );
+
+        const h =
+            String(
+                date.getHours()
+            ).padStart(
+                2,
+                '0'
+            );
+
+        const min =
+            String(
+                date.getMinutes()
+            ).padStart(
+                2,
+                '0'
+            );
+
+        return (
+            y + '/' +
+            m + '/' +
+            d + ' · ' +
+            h + ':' +
+            min
+        );
+    }
+
+    function removeRepostTimestamps() {
+        document
+            .querySelectorAll(
+                '.x-repost-timestamp'
+            )
+            .forEach(
+                element => {
+                    element.remove();
+                }
+            );
+    }
+
+    function renderRepostTimestamps() {
+
+        if (
+            !isEnabled(
+                userSettings
+                    .showRepostTimestamp
+            )
+        ) {
+            return;
+        }
+
+        if (
+            repostTimes.size === 0
+        ) {
+            return;
+        }
+
+        const links =
+            document.querySelectorAll(
+                '[href*="/status/"]'
+            );
+
+        for (const link of links) {
+
+            const href =
+                link.getAttribute(
+                    'href'
+                );
+
+            if (!href) {
+                continue;
+            }
+
+            const match =
+                href.match(
+                    /\/status\/(\d+)/
+                );
+
+            if (!match) {
+                continue;
+            }
+
+            const id =
+                match[1];
+
+            if (
+                !repostTimes.has(id)
+            ) {
+                continue;
+            }
+
+            const cell =
+                link.closest(
+                    '[data-testid="cellInnerDiv"]'
+                );
+
+            if (!cell) {
+                continue;
+            }
+
+            if (
+                cell.querySelector(
+                    '.x-repost-timestamp'
+                )
+            ) {
+                continue;
+            }
+
+            const label =
+                cell.querySelector(
+                    '[data-testid="socialContext"]'
+                );
+
+            if (!label) {
+                continue;
+            }
+
+            const time =
+                document.createElement(
+                    'span'
+                );
+
+            time.className =
+                'x-repost-timestamp';
+
+            time.textContent =
+                ' · ' +
+                formatRepostDate(
+                    repostTimes.get(id)
+                );
+
+            time.style.color =
+                'rgb(113, 118, 123)';
+
+            time.style.fontSize =
+                '13px';
+
+            time.style.fontWeight =
+                '400';
+
+            time.style.whiteSpace =
+                'nowrap';
+
+            label.appendChild(
+                time
+            );
+        }
+    }
+
+    function refreshRepostTimestamps() {
+
+        if (
+            isEnabled(
+                userSettings
+                    .showRepostTimestamp
+            )
+        ) {
+            renderRepostTimestamps();
+        }
+        else {
+            removeRepostTimestamps();
+        }
+    }
+
+    function isTimelineRequest(url) {
+        if (
+            typeof url !== 'string'
+        ) {
+            return false;
+        }
+
+        return (
+            url.includes(
+                '/graphql/'
+            ) &&
+            (
+                url.includes(
+                    'Timeline'
+                ) ||
+                url.includes(
+                    'timeline'
+                )
+            )
+        );
+    }
+
+    const RepostXHR =
+        pageWindow.XMLHttpRequest;
+
+    if (RepostXHR) {
+
+        const originalRepostOpen =
+            RepostXHR.prototype.open;
+
+        RepostXHR.prototype.open =
+            function (
+                method,
+                url,
+                ...rest
+            ) {
+                this.__rtUrl =
+                    url;
+
+                return originalRepostOpen.call(
+                    this,
+                    method,
+                    url,
+                    ...rest
+                );
+            };
+
+        const originalRepostSend =
+            RepostXHR.prototype.send;
+
+        RepostXHR.prototype.send =
+            function (...args) {
+
+                if (
+                    typeof this.__rtUrl ===
+                        'string' &&
+                    isTimelineRequest(
+                        this.__rtUrl
+                    )
+                ) {
+                    this.addEventListener(
+                        'load',
+                        () => {
+                            try {
+                                let json = null;
+
+                                if (
+                                    this.responseType ===
+                                        'json' &&
+                                    this.response
+                                ) {
+                                    json =
+                                        this.response;
+                                }
+                                else if (
+                                    typeof this.response ===
+                                        'string' &&
+                                    this.response
+                                ) {
+                                    json =
+                                        JSON.parse(
+                                            this.response
+                                        );
+                                }
+                                else if (
+                                    typeof this.responseText ===
+                                        'string' &&
+                                    this.responseText
+                                ) {
+                                    json =
+                                        JSON.parse(
+                                            this.responseText
+                                        );
+                                }
+
+                                if (json) {
+                                    scanRepostObject(
+                                        json
+                                    );
+                                }
+
+                            } catch (e) {}
+                        }
+                    );
+                }
+
+                return originalRepostSend.apply(
+                    this,
+                    args
+                );
+            };
+    }
+
+    setInterval(
+        refreshRepostTimestamps,
+        1000
     );
 
     // ============================================================
