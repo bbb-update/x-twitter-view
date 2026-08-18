@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.0
+// @version      2.1
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -18,41 +18,53 @@
     // ============================================================
     // ★ USER SETTINGS ★
     //
-    // 1. Media 버튼 표시 여부
+    // 以下の値は初回インストール時のデフォルト設定です。
+    // 設定ボタンから一度保存すると、保存された設定が優先されます。
     //
-    // O = 표시
-    // X = 숨김
+    // The values below are the defaults used on first install.
+    // Once saved from the Settings button, the saved settings take priority.
+    // ============================================================
+
+    // ============================================================
+    // 1. 写真・動画 ボタンの表示 / Show Photos・Videos Buttons
     //
-    // 버튼이 비표시 상태여도 【 Ctrl + Shift 】를 누른 상태로 Media 버튼을 클릭하면
-    // 사진 → 동영상→ 사진 순서로 전환 가능
-    // 아무것도 누르지 않은 상태로 Media 버튼을 클릭하면 기본 그리드 형식으로 표시
+    // O = 表示 / Show
+    // X = 非表示 / Hide
     //
-    const SHOW_MEDIA_BUTTONS = 'O';
+    // ボタンを非表示にしていても【Ctrl + Shift】を押しながら
+    // Media をクリックすると、写真 → 動画 → 写真の順に切り替えられます。
+    // 通常クリックでは、デフォルトのグリッド表示になります。
+    //
+    // Even when the buttons are hidden, Ctrl + Shift + clicking Media
+    // switches between Photos → Videos → Photos.
+    // A normal click opens the default grid view.
+    //
+    const DEFAULT_SHOW_MEDIA_BUTTONS = 'O';
     //
     // ============================================================
 
     // ============================================================
-    // 2. Likes 버튼 표시 여부
+    // 2. Likes 移動ボタンの表示 / Show Likes Navigation Button
     //
-    // O = 표시
-    // X = 숨김
+    // O = 表示 / Show
+    // X = 非表示 / Hide
     //
-    const SHOW_LIKES_BUTTON = 'O';
-    //
-    // ============================================================
-
-    // ============================================================
-    // 3. Media 버튼 언어
-    //
-    // E = Photo / Video
-    // J = 画像 / 動画
-    //
-    const MEDIA_BUTTON_LANGUAGE = 'E';
+    const DEFAULT_SHOW_LIKES_BUTTON = 'O';
     //
     // ============================================================
 
     // ============================================================
-    // 4. 버튼 포인트 컬러
+    // 3. 表示言語 / Language
+    //
+    // E = Photos / Videos / Likes
+    // J = 画像 / 動画 / いいね
+    //
+    const DEFAULT_MEDIA_BUTTON_LANGUAGE = 'E';
+    //
+    // ============================================================
+
+    // ============================================================
+    // 4. ボタンのポイントカラー / Button accent color
     //
     // 1 = Blue   #1d9bf0
     // 2 = Yellow #ffd400
@@ -61,12 +73,12 @@
     // 5 = Orange #ff7a00
     // 6 = Green  #00ba7c
     //
-    const BUTTON_COLOR_THEME = 6;
+    const DEFAULT_BUTTON_COLOR_THEME = 1;
     //
     // ============================================================
 
     // ============================================================
-    // 기본 설정
+    // Base settings
     // ============================================================
 
     const excludedPaths = new Set([
@@ -91,38 +103,148 @@
         6: '#00ba7c'
     };
 
-    const accentColor =
-        accentColors[BUTTON_COLOR_THEME] ||
-        accentColors[1];
+    const pressedBrightness = {
+        1: 1.25,
+        2: 1.10,
+        3: 1.80,
+        4: 1.42,
+        5: 1.38,
+        6: 1.24
+    };
+
+    // ============================================================
+    // Saved settings
+    // ============================================================
+
+    function normalizeOnOff(value, fallback) {
+        const normalized = String(value).toUpperCase();
+
+        if (normalized === 'O' || normalized === 'X') {
+            return normalized;
+        }
+
+        return fallback;
+    }
+
+    function normalizeLanguage(value) {
+        return String(value).toUpperCase() === 'J'
+            ? 'J'
+            : 'E';
+    }
+
+    function normalizeColorTheme(value) {
+        const number = Number(value);
+
+        return number >= 1 && number <= 6
+            ? number
+            : DEFAULT_BUTTON_COLOR_THEME;
+    }
+
+    let userSettings = {
+        showMediaButtons: normalizeOnOff(
+            GM_getValue(
+                'showMediaButtons',
+                DEFAULT_SHOW_MEDIA_BUTTONS
+            ),
+            DEFAULT_SHOW_MEDIA_BUTTONS
+        ),
+
+        showLikesButton: normalizeOnOff(
+            GM_getValue(
+                'showLikesButton',
+                DEFAULT_SHOW_LIKES_BUTTON
+            ),
+            DEFAULT_SHOW_LIKES_BUTTON
+        ),
+
+        language: normalizeLanguage(
+            GM_getValue(
+                'buttonLanguage',
+                DEFAULT_MEDIA_BUTTON_LANGUAGE
+            )
+        ),
+
+        colorTheme: normalizeColorTheme(
+            GM_getValue(
+                'buttonColorTheme',
+                DEFAULT_BUTTON_COLOR_THEME
+            )
+        )
+    };
+
+    function isEnabled(value) {
+        return String(value).toUpperCase() === 'O';
+    }
+
+    function getAccentColor() {
+        return (
+            accentColors[userSettings.colorTheme] ||
+            accentColors[1]
+        );
+    }
+
+    function getPressedBrightness() {
+        return (
+            pressedBrightness[userSettings.colorTheme] ||
+            1.25
+        );
+    }
+
+    function saveUserSettings(nextSettings) {
+        userSettings = {
+            showMediaButtons: normalizeOnOff(
+                nextSettings.showMediaButtons,
+                DEFAULT_SHOW_MEDIA_BUTTONS
+            ),
+
+            showLikesButton: normalizeOnOff(
+                nextSettings.showLikesButton,
+                DEFAULT_SHOW_LIKES_BUTTON
+            ),
+
+            language: normalizeLanguage(
+                nextSettings.language
+            ),
+
+            colorTheme: normalizeColorTheme(
+                nextSettings.colorTheme
+            )
+        };
+
+        GM_setValue(
+            'showMediaButtons',
+            userSettings.showMediaButtons
+        );
+
+        GM_setValue(
+            'showLikesButton',
+            userSettings.showLikesButton
+        );
+
+        GM_setValue(
+            'buttonLanguage',
+            userSettings.language
+        );
+
+        GM_setValue(
+            'buttonColorTheme',
+            userSettings.colorTheme
+        );
+    }
 
     let History_push = null;
-
-    /*
-     * 현재 화면에 생성된 shortcut 버튼이
-     * 어느 프로필용인지 기억
-     */
     let shortcutUsername = null;
-
-    /*
-     * 마지막으로 확인된 Light / Dark 테마
-     */
     let lastLightTheme = null;
 
     // ============================================================
-    // X 최상위 React props 찾기
+    // Find top-level X React props
     // ============================================================
 
     function getTopLevelProps() {
-
         const root =
-            document.querySelector(
-                '#react-root'
-            );
+            document.querySelector('#react-root');
 
-        if (
-            !root ||
-            !root.firstElementChild
-        ) {
+        if (!root || !root.firstElementChild) {
             return null;
         }
 
@@ -131,15 +253,8 @@
 
         let reactPropsKey = null;
 
-        for (
-            const key of
-            Object.keys(element)
-        ) {
-            if (
-                key.indexOf(
-                    '__reactProps'
-                ) === 0
-            ) {
+        for (const key of Object.keys(element)) {
+            if (key.indexOf('__reactProps') === 0) {
                 reactPropsKey = key;
                 break;
             }
@@ -164,99 +279,71 @@
     }
 
     // ============================================================
-    // X 내부 history.push 확보
+    // history.push
     // ============================================================
 
     function tryFindHistory() {
-
         if (History_push) {
             return true;
         }
 
-        const props =
-            getTopLevelProps();
+        const props = getTopLevelProps();
 
         if (
             !props ||
             !props.history ||
-            typeof props.history.push !==
-                'function'
+            typeof props.history.push !== 'function'
         ) {
             return false;
         }
 
-        History_push =
-            props.history.push;
+        History_push = props.history.push;
 
         return true;
     }
 
     // ============================================================
-    // SPA 이동
+    // SPA navigation
     // ============================================================
 
-    function navigate(
-        pathname,
-        search = ''
-    ) {
-
+    function navigate(pathname, search = '') {
         if (History_push) {
-
             const query = {};
 
             if (search) {
-
                 const params =
                     new URLSearchParams(
-                        search.replace(
-                            /^\?/,
-                            ''
-                        )
+                        search.replace(/^\?/, '')
                     );
 
-                for (
-                    const [key, value]
-                    of params
-                ) {
+                for (const [key, value] of params) {
                     query[key] = value;
                 }
             }
 
             try {
-
                 History_push({
-                    pathname:
-                        pathname,
-
-                    hash:
-                        '',
-
-                    query:
-                        query,
-
-                    search:
-                        search
+                    pathname,
+                    hash: '',
+                    query,
+                    search
                 });
 
                 return;
 
             } catch (e) {
-                /*
-                 * 실패하면 location.href로 fallback
-                 */
+                // Fall back to location.href on failure
             }
         }
 
-        location.href =
-            pathname + search;
+        location.href = pathname + search;
     }
 
     // ============================================================
-    // 프로필 페이지 판정
+    // Detect profile pages
     // ============================================================
 
     function getProfileUsername() {
-
         const parts =
             location.pathname
                 .split('/')
@@ -266,8 +353,7 @@
             return null;
         }
 
-        const username =
-            parts[0];
+        const username = parts[0];
 
         if (
             excludedPaths.has(
@@ -281,15 +367,14 @@
             return username;
         }
 
-        const profileTabs =
-            new Set([
-                'all',
-                'reposts',
-                'media',
-                'with_replies',
-                'highlights',
-                'likes'
-            ]);
+        const profileTabs = new Set([
+            'all',
+            'reposts',
+            'media',
+            'with_replies',
+            'highlights',
+            'likes'
+        ]);
 
         if (
             profileTabs.has(
@@ -302,22 +387,11 @@
         return null;
     }
 
-    function isProfilePage() {
-        return (
-            getProfileUsername() !== null
-        );
-    }
-
     // ============================================================
-    // 필터 없는 순수 /media 판정
-    //
-    // /media              → 구형 Media
-    // /media?filter=photo → 신형 Photos
-    // /media?filter=video → 신형 Videos
+    // Detect plain /media pages
     // ============================================================
 
     function isPlainMediaPage() {
-
         if (
             !/^\/[^/]+\/media\/?$/.test(
                 location.pathname
@@ -331,33 +405,26 @@
                 location.search
             );
 
-        return !params.has(
-            'filter'
-        );
+        return !params.has('filter');
     }
 
     // ============================================================
-    // 순수 /media에서만
-    // 프로필 redesign feature flag 비활성화
+    // Legacy Media feature flag
     // ============================================================
 
     function tryPatchFeatureSwitch() {
-
-        const props =
-            getTopLevelProps();
+        const props = getTopLevelProps();
 
         if (
             !props ||
             !props.contextProviderProps ||
-            !props.contextProviderProps
-                .featureSwitches
+            !props.contextProviderProps.featureSwitches
         ) {
             return false;
         }
 
         const featureSwitches =
-            props.contextProviderProps
-                .featureSwitches;
+            props.contextProviderProps.featureSwitches;
 
         if (
             featureSwitches
@@ -370,15 +437,13 @@
             featureSwitches.isTrue;
 
         if (
-            typeof originalIsTrue !==
-            'function'
+            typeof originalIsTrue !== 'function'
         ) {
             return false;
         }
 
         featureSwitches.isTrue =
             function (flag) {
-
                 if (
                     flag ===
                         'responsive_web_profile_redesign_enabled' &&
@@ -394,20 +459,14 @@
             };
 
         featureSwitches
-            .__legacyMediaControlPatched =
-            true;
+            .__legacyMediaControlPatched = true;
 
         return true;
     }
 
-    // ============================================================
-    // X 내부 객체 초기화
-    // ============================================================
-
     const initTimer =
         setInterval(
             function () {
-
                 const flagReady =
                     tryPatchFeatureSwitch();
 
@@ -418,32 +477,25 @@
                     flagReady &&
                     historyReady
                 ) {
-                    clearInterval(
-                        initTimer
-                    );
+                    clearInterval(initTimer);
                 }
-
             },
             200
         );
 
     // ============================================================
-    // Media 탭 찾기
+    // Media tab
     // ============================================================
 
     function findMediaTab() {
-
         const links =
             document.querySelectorAll(
                 'a[href]'
             );
 
         for (const link of links) {
-
             const href =
-                link.getAttribute(
-                    'href'
-                );
+                link.getAttribute('href');
 
             if (!href) {
                 continue;
@@ -452,7 +504,6 @@
             let url;
 
             try {
-
                 url =
                     new URL(
                         href,
@@ -486,21 +537,71 @@
     }
 
     // ============================================================
-    // 테마 판정
-    //
-    // 밝은 배경이면 Light
-    // 어두운 배경이면 Dark
+    // Profile UI reference
+    // ============================================================
+
+    function getProfileUiContext() {
+        const mediaTab =
+            findMediaTab();
+
+        if (!mediaTab) {
+            return null;
+        }
+
+        const tabList =
+            mediaTab.closest(
+                '[role="tablist"]'
+            );
+
+        if (
+            !tabList ||
+            !tabList.parentElement
+        ) {
+            return null;
+        }
+
+        let host =
+            tabList.parentElement;
+
+        let candidate = host;
+
+        for (
+            let i = 0;
+            i < 4 &&
+            candidate &&
+            candidate !== document.body;
+            i++
+        ) {
+            const rect =
+                candidate.getBoundingClientRect();
+
+            if (
+                rect.width > 500 &&
+                rect.height > 80
+            ) {
+                host = candidate;
+            }
+
+            candidate =
+                candidate.parentElement;
+        }
+
+        return {
+            mediaTab,
+            tabList,
+            host
+        };
+    }
+
+    // ============================================================
+    // Light / Dark theme
     // ============================================================
 
     function isLightTheme() {
-
-        const bodyStyle =
+        const color =
             getComputedStyle(
                 document.body
-            );
-
-        const color =
-            bodyStyle.backgroundColor;
+            ).backgroundColor;
 
         const match =
             color.match(
@@ -511,14 +612,9 @@
             return false;
         }
 
-        const r =
-            Number(match[1]);
-
-        const g =
-            Number(match[2]);
-
-        const b =
-            Number(match[3]);
+        const r = Number(match[1]);
+        const g = Number(match[2]);
+        const b = Number(match[3]);
 
         const brightness =
             (
@@ -530,97 +626,55 @@
         return brightness > 160;
     }
 
-    // ============================================================
-    // 버튼 색상
-    // ============================================================
-
     function getBaseThemeColors() {
-
-        const light =
-            isLightTheme();
+        const light = isLightTheme();
 
         return {
-            background:
-                light
-                    ? '#ffffff'
-                    : '#0e1217',
+            background: light
+                ? '#ffffff'
+                : '#0e1217',
 
-            border:
-                light
-                    ? '#cfd9de'
-                    : '#536471',
+            border: light
+                ? '#cfd9de'
+                : '#536471',
 
-            text:
-                light
-                    ? '#0f1419'
-                    : '#e7e9ea'
+            text: light
+                ? '#0f1419'
+                : '#e7e9ea'
         };
     }
 
     function getAccentTextColor() {
-
         return isLightTheme()
             ? '#0f1419'
             : '#e7e9ea';
     }
 
-    function getPressedBrightness() {
-
-        const brightnessByTheme = {
-            1: 1.25, // Blue
-            2: 1.10, // Yellow
-            3: 1.80, // Pink
-            4: 1.42, // Purple
-            5: 1.38, // Orange
-            6: 1.24  // Green
-        };
-
-        return (
-            brightnessByTheme[
-                BUTTON_COLOR_THEME
-            ] || 1.25
-        );
-    }
-
     // ============================================================
-    // 버튼 현재 상태에 맞춰 색상 갱신
+    // Button styles
     // ============================================================
 
-    function refreshButtonStyle(
-        button
-    ) {
-
+    function refreshButtonStyle(button) {
         const base =
             getBaseThemeColors();
 
         const hovered =
-            button.dataset.hovered ===
-            'true';
+            button.dataset.hovered === 'true';
 
         const pressed =
-            button.dataset.pressed ===
-            'true';
+            button.dataset.pressed === 'true';
 
-        /*
-         * Hover / 클릭 중
-         * → 포인트 컬러 유지
-         */
-        if (
-            hovered ||
-            pressed
-        ) {
-
+        if (hovered || pressed) {
             button.style.background =
-                accentColor;
+                getAccentColor();
 
             button.style.borderColor =
-                accentColor;
+                getAccentColor();
 
             button.style.color =
                 getAccentTextColor();
 
         } else {
-
             button.style.background =
                 base.background;
 
@@ -631,22 +685,54 @@
                 base.text;
         }
 
-        /*
-         * 클릭해서 누르고 있는 동안만
-         * 전체 버튼을 살짝 밝게
-         */
-       button.style.filter =
+        button.style.filter =
             pressed
                 ? `brightness(${getPressedBrightness()})`
                 : 'none';
     }
 
-    // ============================================================
-    // 현재 shortcut 버튼 전체 테마 갱신
-    // ============================================================
+    function addButtonEffects(button) {
+        button.dataset.hovered = 'false';
+        button.dataset.pressed = 'false';
+
+        button.addEventListener(
+            'mouseenter',
+            function () {
+                button.dataset.hovered = 'true';
+                refreshButtonStyle(button);
+            }
+        );
+
+        button.addEventListener(
+            'mouseleave',
+            function () {
+                button.dataset.hovered = 'false';
+                button.dataset.pressed = 'false';
+
+                refreshButtonStyle(button);
+            }
+        );
+
+        button.addEventListener(
+            'mousedown',
+            function () {
+                button.dataset.pressed = 'true';
+                refreshButtonStyle(button);
+            }
+        );
+
+        button.addEventListener(
+            'mouseup',
+            function () {
+                button.dataset.pressed = 'false';
+                refreshButtonStyle(button);
+            }
+        );
+
+        refreshButtonStyle(button);
+    }
 
     function refreshAllShortcutButtons() {
-
         const wrapper =
             document.querySelector(
                 '.x-profile-shortcut-wrapper'
@@ -656,21 +742,16 @@
             return;
         }
 
-        const buttons =
-            wrapper.querySelectorAll(
-                'button'
-            );
-
-        for (const button of buttons) {
-
-            refreshButtonStyle(
-                button
-            );
+        for (
+            const button of
+            wrapper.querySelectorAll('button')
+        ) {
+            refreshButtonStyle(button);
         }
     }
 
     // ============================================================
-    // 공통 버튼 생성
+    // Shortcut buttons
     // ============================================================
 
     function createShortcutButton(
@@ -678,22 +759,13 @@
         width,
         onClick
     ) {
-
         const button =
-            document.createElement(
-                'button'
-            );
+            document.createElement('button');
 
-        button.textContent =
-            text;
-
-        button.dataset.hovered =
-            'false';
-
-        button.dataset.pressed =
-            'false';
+        button.textContent = text;
 
         button.style.cssText = `
+            width: ${width}px;
             height: 22px;
 
             padding: 0 8px;
@@ -718,90 +790,11 @@
                 filter 0.06s ease;
         `;
 
-        button.style.width =
-            width + 'px';
-
-        refreshButtonStyle(
-            button
-        );
-
-        // --------------------------------------------------------
-        // Hover 시작
-        // --------------------------------------------------------
-
-        button.addEventListener(
-            'mouseenter',
-            function () {
-
-                button.dataset.hovered =
-                    'true';
-
-                refreshButtonStyle(
-                    button
-                );
-            }
-        );
-
-        // --------------------------------------------------------
-        // Hover 종료
-        // --------------------------------------------------------
-
-        button.addEventListener(
-            'mouseleave',
-            function () {
-
-                button.dataset.hovered =
-                    'false';
-
-                button.dataset.pressed =
-                    'false';
-
-                refreshButtonStyle(
-                    button
-                );
-            }
-        );
-
-        // --------------------------------------------------------
-        // 클릭 누르는 순간
-        // → 포인트 컬러를 살짝 밝게
-        // --------------------------------------------------------
-
-        button.addEventListener(
-            'mousedown',
-            function () {
-
-                button.dataset.pressed =
-                    'true';
-
-                refreshButtonStyle(
-                    button
-                );
-            }
-        );
-
-        // --------------------------------------------------------
-        // 마우스 버튼을 떼면
-        // → Hover 포인트 컬러로 복귀
-        // --------------------------------------------------------
-
-        button.addEventListener(
-            'mouseup',
-            function () {
-
-                button.dataset.pressed =
-                    'false';
-
-                refreshButtonStyle(
-                    button
-                );
-            }
-        );
+        addButtonEffects(button);
 
         button.addEventListener(
             'click',
             function (event) {
-
                 event.preventDefault();
                 event.stopPropagation();
 
@@ -812,12 +805,22 @@
         return button;
     }
 
-    // ============================================================
-    // 상단 shortcut 버튼 영역
-    // ============================================================
+    function rebuildShortcutButtons() {
+        const old =
+            document.querySelector(
+                '.x-profile-shortcut-wrapper'
+            );
+
+        if (old) {
+            old.remove();
+        }
+
+        shortcutUsername = null;
+
+        ensureShortcutButtons();
+    }
 
     function ensureShortcutButtons() {
-
         const old =
             document.querySelector(
                 '.x-profile-shortcut-wrapper'
@@ -826,42 +829,32 @@
         const currentUsername =
             getProfileUsername();
 
-        /*
-         * 둘 다 OFF거나
-         * 프로필 페이지가 아니면 제거
-         */
         if (
             (
-                String(SHOW_MEDIA_BUTTONS).toUpperCase() !== 'O' &&
-                String(SHOW_LIKES_BUTTON).toUpperCase() !== 'O'
+                !isEnabled(
+                    userSettings.showMediaButtons
+                ) &&
+                !isEnabled(
+                    userSettings.showLikesButton
+                )
             ) ||
             !currentUsername
         ) {
-
             if (old) {
                 old.remove();
             }
 
-            shortcutUsername =
-                null;
+            shortcutUsername = null;
 
             return;
         }
 
-        /*
-         * 다른 사람 프로필로 이동한 경우에는
-         * 버튼 링크 대상도 바뀌므로 새로 생성
-         */
         if (
             old &&
-            shortcutUsername !==
-                currentUsername
+            shortcutUsername !== currentUsername
         ) {
-
             old.remove();
-
-            shortcutUsername =
-                null;
+            shortcutUsername = null;
         }
 
         const existing =
@@ -870,86 +863,36 @@
             );
 
         if (existing) {
-
             refreshAllShortcutButtons();
-
             return;
         }
 
-        const mediaTab =
-            findMediaTab();
+        const context =
+            getProfileUiContext();
 
-        if (!mediaTab) {
+        if (!context) {
             return;
         }
 
-        const tabList =
-            mediaTab.closest(
-                '[role="tablist"]'
-            );
-
-        if (
-            !tabList ||
-            !tabList.parentElement
-        ) {
-            return;
-        }
-
-        let host =
-            tabList.parentElement;
-
-        let candidate =
-            host;
-
-        for (
-            let i = 0;
-            i < 4 &&
-            candidate &&
-            candidate !==
-                document.body;
-            i++
-        ) {
-
-            const rect =
-                candidate
-                    .getBoundingClientRect();
-
-            if (
-                rect.width > 500 &&
-                rect.height > 80
-            ) {
-                host = candidate;
-            }
-
-            candidate =
-                candidate.parentElement;
-        }
+        const { host } = context;
 
         const hostStyle =
-            getComputedStyle(
-                host
-            );
+            getComputedStyle(host);
 
         if (
-            hostStyle.position ===
-            'static'
+            hostStyle.position === 'static'
         ) {
-            host.style.position =
-                'relative';
+            host.style.position = 'relative';
         }
 
         if (
-            hostStyle.overflow ===
-            'hidden'
+            hostStyle.overflow === 'hidden'
         ) {
-            host.style.overflow =
-                'visible';
+            host.style.overflow = 'visible';
         }
 
         const wrapper =
-            document.createElement(
-                'div'
-            );
+            document.createElement('div');
 
         wrapper.className =
             'x-profile-shortcut-wrapper';
@@ -979,9 +922,10 @@
         // --------------------------------------------------------
 
         if (
-            String(SHOW_LIKES_BUTTON).toUpperCase() === 'O'
+            isEnabled(
+                userSettings.showLikesButton
+            )
         ) {
-
             const likesButton =
                 createShortcutButton(
                     '♡',
@@ -994,7 +938,7 @@
                 );
 
             likesButton.title =
-                String(MEDIA_BUTTON_LANGUAGE).toUpperCase() === 'J'
+                userSettings.language === 'J'
                     ? 'いいね'
                     : 'Likes';
 
@@ -1007,95 +951,1132 @@
         }
 
         // --------------------------------------------------------
-        // Photo / Video
+        // Photos / Videos
         // --------------------------------------------------------
 
         if (
-            String(SHOW_MEDIA_BUTTONS).toUpperCase() === 'O'
+            isEnabled(
+                userSettings.showMediaButtons
+            )
         ) {
+            const isJapanese =
+                userSettings.language === 'J';
 
-            const username =
-                currentUsername;
+            const photoText =
+                isJapanese
+                    ? '画像'
+                    : 'Photos';
 
-            if (username) {
+            const videoText =
+                isJapanese
+                    ? '動画'
+                    : 'Videos';
 
-                const isJapanese =
-                    String(
-                        MEDIA_BUTTON_LANGUAGE
-                    ).toUpperCase() ===
-                    'J';
-
-                const photoText =
-                    isJapanese
-                        ? '画像'
-                        : 'Photo';
-
-                const videoText =
-                    isJapanese
-                        ? '動画'
-                        : 'Video';
-
-                const photoButton =
-                    createShortcutButton(
-                        photoText,
-                        64,
-                        function () {
-                            navigate(
-                                '/' +
-                                username +
-                                '/media',
-                                '?filter=photo'
-                            );
-                        }
-                    );
-
-                const videoButton =
-                    createShortcutButton(
-                        videoText,
-                        64,
-                        function () {
-                            navigate(
-                                '/' +
-                                username +
-                                '/media',
-                                '?filter=video'
-                            );
-                        }
-                    );
-
-                wrapper.appendChild(
-                    photoButton
+            const photoButton =
+                createShortcutButton(
+                    photoText,
+                    64,
+                    function () {
+                        navigate(
+                            '/' +
+                            currentUsername +
+                            '/media',
+                            '?filter=photo'
+                        );
+                    }
                 );
 
-                wrapper.appendChild(
-                    videoButton
+            const videoButton =
+                createShortcutButton(
+                    videoText,
+                    64,
+                    function () {
+                        navigate(
+                            '/' +
+                            currentUsername +
+                            '/media',
+                            '?filter=video'
+                        );
+                    }
                 );
-            }
+
+            wrapper.appendChild(
+                photoButton
+            );
+
+            wrapper.appendChild(
+                videoButton
+            );
         }
 
-        host.appendChild(
-            wrapper
-        );
+        host.appendChild(wrapper);
 
         shortcutUsername =
             currentUsername;
 
-        /*
-         * 생성 직후 현재 테마 적용
-         */
         refreshAllShortcutButtons();
     }
 
     // ============================================================
-    // React onClick 핸들러 찾기
+    // Find Edit Profile / Follow / Following button
     // ============================================================
 
-    function findReactClickHandler(
-        element
+       function findProfileActionButton(
+        context
     ) {
 
-        let node =
-            element;
+        const {
+            tabList
+        } = context;
+
+        const tabRect =
+            tabList.getBoundingClientRect();
+
+        const candidates =
+            Array.from(
+                document.querySelectorAll(
+                    [
+                        '[data-testid="editProfileButton"]',
+                        '[data-testid$="-follow"]',
+                        '[data-testid$="-unfollow"]'
+                    ].join(',')
+                )
+            ).filter(
+                candidate => {
+
+                    const rect =
+                        candidate
+                            .getBoundingClientRect();
+
+                    //
+                    if (
+                        rect.width < 40 ||
+                        rect.height < 28
+                    ) {
+                        return false;
+                    }
+
+                    //
+                    if (
+                        rect.bottom <= 0
+                    ) {
+                        return false;
+                    }
+
+                    //
+                    if (
+                        rect.left <
+                            tabRect.left - 2 ||
+                        rect.right >
+                            tabRect.right + 2
+                    ) {
+                        return false;
+                    }
+
+                    //
+                    if (
+                        rect.bottom >=
+                            tabRect.top
+                    ) {
+                        return false;
+                    }
+
+                    //
+                    const centerX =
+                        rect.left +
+                        rect.width / 2;
+
+                    if (
+                        centerX <
+                            tabRect.left +
+                            tabRect.width * 0.45
+                    ) {
+                        return false;
+                    }
+
+                    return true;
+                }
+            );
+
+        if (
+            candidates.length === 0
+        ) {
+            return null;
+        }
+
+        candidates.sort(
+            (a, b) => {
+
+                const aRect =
+                    a.getBoundingClientRect();
+
+                const bRect =
+                    b.getBoundingClientRect();
+
+                const aDistance =
+                    tabRect.top -
+                    aRect.bottom;
+
+                const bDistance =
+                    tabRect.top -
+                    bRect.bottom;
+
+                return (
+                    aDistance -
+                    bDistance
+                );
+            }
+        );
+
+        return candidates[0];
+    }
+    // ============================================================
+    // Settings menu text
+    // ============================================================
+
+        function getSettingsText() {
+        if (userSettings.language === 'J') {
+            return {
+                title: '✦ スクリプト設定',
+                media: '写真・動画 表示ボタン',
+                mediaNote:
+                    '【Ctrl+Shift+メディア】でも切り替えられます',
+                likes: 'いいね欄 移動ボタン',
+                language: '表示言語',
+                color: 'カラー',
+                cancel: 'キャンセル',
+                save: '保存',
+                settings: '設定'
+            };
+        }
+
+        return {
+            title: '✦ Script Settings',
+            media: 'Photos・Videos buttons',
+            mediaNote:
+                'Can also switch with 【Ctrl+Shift+Media】',
+            likes: 'Likes Navigation button',
+            language: 'Language',
+            color: 'Color',
+            cancel: 'Cancel',
+            save: 'Save',
+            settings: 'Settings'
+        };
+    }
+
+    // ============================================================
+    // Settings popup
+    // ============================================================
+
+    function closeSettingsPopup() {
+        const popup =
+            document.querySelector(
+                '.x-profile-settings-popup'
+            );
+
+        if (popup) {
+            popup.remove();
+        }
+    }
+
+    function applySettingsPopupTheme() {
+        const popup =
+            document.querySelector(
+                '.x-profile-settings-popup'
+            );
+
+        if (!popup) {
+            return;
+        }
+
+        const base =
+            getBaseThemeColors();
+
+        popup.style.background =
+            base.background;
+
+        popup.style.color =
+            base.text;
+
+        popup.style.borderColor =
+            base.border;
+
+        for (
+            const control of
+            popup.querySelectorAll(
+                'select, .x-settings-action'
+            )
+        ) {
+            control.style.background =
+                base.background;
+
+            control.style.color =
+                base.text;
+
+            control.style.borderColor =
+                base.border;
+        }
+
+        const save =
+            popup.querySelector(
+                '.x-settings-save'
+            );
+
+        if (save) {
+            save.style.background =
+                getAccentColor();
+
+            save.style.borderColor =
+                getAccentColor();
+
+            save.style.color =
+                getAccentTextColor();
+        }
+
+        for (
+            const choice of
+            popup.querySelectorAll(
+                '.x-settings-color-choice'
+            )
+        ) {
+            const checked =
+                choice.querySelector(
+                    'input'
+                )?.checked;
+
+            choice.style.outline =
+                checked
+                    ? `2px solid ${base.text}`
+                    : 'none';
+
+            choice.style.outlineOffset =
+                checked
+                    ? '2px'
+                    : '0';
+        }
+    }
+
+    function openSettingsPopup(
+        settingsButton
+    ) {
+        const existing =
+            document.querySelector(
+                '.x-profile-settings-popup'
+            );
+
+        if (existing) {
+            closeSettingsPopup();
+            return;
+        }
+
+        const text =
+            getSettingsText();
+
+        const base =
+            getBaseThemeColors();
+
+        const popup =
+            document.createElement('div');
+
+        popup.className =
+            'x-profile-settings-popup';
+
+        popup.style.cssText = `
+            position: fixed;
+
+            z-index: 2147483646;
+
+            width: 270px;
+
+            padding: 14px;
+
+            border: 1px solid ${base.border};
+            border-radius: 12px;
+
+            background: ${base.background};
+            color: ${base.text};
+
+            box-shadow:
+                0 8px 28px rgba(0, 0, 0, 0.24);
+
+            font-family:
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                Roboto,
+                Helvetica,
+                Arial,
+                sans-serif;
+
+            font-size: 13px;
+
+            box-sizing: border-box;
+        `;
+
+        const title =
+            document.createElement('div');
+
+        title.textContent =
+            text.title;
+
+        title.style.cssText = `
+            margin-bottom: 12px;
+
+            font-size: 15px;
+            font-weight: 700;
+        `;
+
+        popup.appendChild(title);
+
+        function createRow(labelText) {
+            const row =
+                document.createElement('div');
+
+            row.style.cssText = `
+                min-height: 36px;
+
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+
+                gap: 12px;
+            `;
+
+            const label =
+                document.createElement('span');
+
+            label.textContent =
+                labelText;
+
+            label.style.fontWeight =
+                '500';
+
+            row.appendChild(label);
+
+            return row;
+        }
+
+        // --------------------------------------------------------
+        // Media ON/OFF
+        // --------------------------------------------------------
+
+        const mediaRow =
+            createRow(text.media);
+
+        const mediaCheckbox =
+            document.createElement('input');
+
+        mediaCheckbox.type =
+            'checkbox';
+
+        mediaCheckbox.checked =
+            isEnabled(
+                userSettings.showMediaButtons
+            );
+
+        mediaCheckbox.style.cssText = `
+            width: 17px;
+            height: 17px;
+
+            accent-color:
+                ${getAccentColor()};
+
+            cursor: pointer;
+        `;
+
+                mediaRow.appendChild(
+            mediaCheckbox
+        );
+
+        popup.appendChild(mediaRow);
+
+        const mediaNote =
+            document.createElement(
+                'div'
+            );
+
+        mediaNote.textContent =
+            text.mediaNote;
+
+        mediaNote.style.cssText = `
+            margin-top: -2px;
+            margin-bottom: 0px;
+            padding-right: 4px;
+
+            font-size: 10px;
+            line-height: 1.45;
+            white-space: pre-wrap;
+
+            color: #71767b;
+        `;
+
+        popup.appendChild(
+            mediaNote
+        );
+
+        // --------------------------------------------------------
+        // Likes ON/OFF
+        // --------------------------------------------------------
+
+        const likesRow =
+            createRow(text.likes);
+
+        const likesCheckbox =
+            document.createElement('input');
+
+        likesCheckbox.type =
+            'checkbox';
+
+        likesCheckbox.checked =
+            isEnabled(
+                userSettings.showLikesButton
+            );
+
+        likesCheckbox.style.cssText = `
+            width: 17px;
+            height: 17px;
+
+            accent-color:
+                ${getAccentColor()};
+
+            cursor: pointer;
+        `;
+
+        likesRow.appendChild(
+            likesCheckbox
+        );
+
+        popup.appendChild(likesRow);
+
+        // --------------------------------------------------------
+        // Language
+        // --------------------------------------------------------
+
+        const languageRow =
+            createRow(text.language);
+
+        const languageSelect =
+            document.createElement('select');
+
+        languageSelect.style.cssText = `
+            width: 112px;
+            height: 29px;
+
+            padding: 0 7px;
+
+            border: 1px solid ${base.border};
+            border-radius: 6px;
+
+            background: ${base.background};
+            color: ${base.text};
+
+            cursor: pointer;
+        `;
+
+        const englishOption =
+            document.createElement('option');
+
+        englishOption.value = 'E';
+        englishOption.textContent =
+            'English';
+
+        const japaneseOption =
+            document.createElement('option');
+
+        japaneseOption.value = 'J';
+        japaneseOption.textContent =
+            '日本語';
+
+        languageSelect.append(
+            englishOption,
+            japaneseOption
+        );
+
+        languageSelect.value =
+            userSettings.language;
+
+        languageRow.appendChild(
+            languageSelect
+        );
+
+        popup.appendChild(
+            languageRow
+        );
+
+        // --------------------------------------------------------
+        // Color
+        // --------------------------------------------------------
+
+        const colorRow =
+            createRow(text.color);
+
+        const colorGroup =
+            document.createElement('div');
+
+        colorGroup.style.cssText = `
+            display: flex;
+            align-items: center;
+
+            gap: 8px;
+        `;
+
+        for (
+            let number = 1;
+            number <= 6;
+            number++
+        ) {
+            const choice =
+                document.createElement('label');
+
+            choice.className =
+                'x-settings-color-choice';
+
+            choice.title =
+                String(number);
+
+            choice.style.cssText = `
+                position: relative;
+
+                width: 17px;
+                height: 17px;
+
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+
+                border-radius: 50%;
+
+                background:
+                    ${accentColors[number]};
+
+                cursor: pointer;
+
+                box-sizing: border-box;
+            `;
+
+            const radio =
+                document.createElement('input');
+
+            radio.type = 'radio';
+            radio.name =
+                'x-settings-color';
+
+            radio.value =
+                String(number);
+
+            radio.checked =
+                number ===
+                userSettings.colorTheme;
+
+            radio.style.cssText = `
+                position: absolute;
+                opacity: 0;
+                pointer-events: none;
+            `;
+
+            radio.addEventListener(
+                'change',
+                applySettingsPopupTheme
+            );
+
+            choice.appendChild(radio);
+            colorGroup.appendChild(choice);
+        }
+
+        colorRow.appendChild(
+            colorGroup
+        );
+
+        popup.appendChild(colorRow);
+
+        // --------------------------------------------------------
+        // Footer
+        // --------------------------------------------------------
+
+        const footer =
+            document.createElement('div');
+
+        footer.style.cssText = `
+            margin-top: 14px;
+
+            display: flex;
+            justify-content: flex-end;
+
+            gap: 8px;
+        `;
+
+        function createActionButton(label) {
+
+            const button =
+                  document.createElement(
+                      'button'
+                  );
+
+            button.className =
+                'x-settings-action';
+
+            button.textContent =
+                label;
+
+            button.style.cssText = `
+                min-width: 72px;
+                height: 30px;
+
+                padding: 0 12px;
+
+                border: 1px solid ${base.border};
+                border-radius: 7px;
+
+                background: ${base.background};
+                color: ${base.text};
+
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+
+                font-size: 12px;
+                font-weight: 600;
+                line-height: 1;
+                text-align: center;
+
+                cursor: pointer;
+                box-sizing: border-box;
+                `;
+
+            return button;
+        }
+
+        const cancelButton =
+            createActionButton(
+                text.cancel
+            );
+
+        const saveButton =
+            createActionButton(
+                text.save
+            );
+
+        saveButton.classList.add(
+            'x-settings-save'
+        );
+
+        saveButton.style.background =
+            getAccentColor();
+
+        saveButton.style.borderColor =
+            getAccentColor();
+
+        saveButton.style.color =
+            getAccentTextColor();
+
+        cancelButton.addEventListener(
+            'click',
+            function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+
+                closeSettingsPopup();
+            }
+        );
+
+        saveButton.addEventListener(
+            'click',
+            function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+
+                const selectedColor =
+                    popup.querySelector(
+                        'input[name="x-settings-color"]:checked'
+                    );
+
+                saveUserSettings({
+                    showMediaButtons:
+                        mediaCheckbox.checked
+                            ? 'O'
+                            : 'X',
+
+                    showLikesButton:
+                        likesCheckbox.checked
+                            ? 'O'
+                            : 'X',
+
+                    language:
+                        languageSelect.value,
+
+                    colorTheme:
+                        selectedColor
+                            ? Number(
+                                selectedColor.value
+                            )
+                            : userSettings.colorTheme
+                });
+
+                closeSettingsPopup();
+
+                rebuildShortcutButtons();
+                refreshSettingsButton();
+                ensureSettingsButton();
+            }
+        );
+
+        footer.append(
+            cancelButton,
+            saveButton
+        );
+
+        popup.appendChild(footer);
+
+        document.body.appendChild(
+            popup
+        );
+
+        // --------------------------------------------------------
+        // Display popup
+        // --------------------------------------------------------
+
+        const buttonRect =
+            settingsButton
+                .getBoundingClientRect();
+
+        const popupRect =
+            popup.getBoundingClientRect();
+
+        let left =
+            buttonRect.right -
+            popupRect.width;
+
+        left =
+            Math.max(
+                10,
+                Math.min(
+                    left,
+                    window.innerWidth -
+                    popupRect.width -
+                    10
+                )
+            );
+
+        let top =
+            buttonRect.bottom + 8;
+
+        if (
+            top +
+            popupRect.height >
+            window.innerHeight - 10
+        ) {
+            top =
+                buttonRect.top -
+                popupRect.height -
+                8;
+        }
+
+        popup.style.left =
+            `${Math.round(left)}px`;
+
+        popup.style.top =
+            `${Math.round(top)}px`;
+
+        applySettingsPopupTheme();
+
+        popup.addEventListener(
+            'click',
+            function (event) {
+                event.stopPropagation();
+            }
+        );
+    }
+
+    // ============================================================
+    // Settings button
+    // ============================================================
+
+    function refreshSettingsButton() {
+        const button =
+            document.querySelector(
+                '.x-profile-settings-button'
+            );
+
+        if (!button) {
+            return;
+        }
+
+        const text =
+            getSettingsText();
+
+        button.title =
+            text.settings;
+
+        button.setAttribute(
+            'aria-label',
+            text.settings
+        );
+
+        refreshButtonStyle(button);
+    }
+
+        function ensureSettingsButton() {
+        const currentUsername =
+            getProfileUsername();
+
+        let existingWrapper =
+            document.querySelector(
+                '.x-profile-settings-wrapper'
+            );
+
+        if (!currentUsername) {
+            if (existingWrapper) {
+                existingWrapper.remove();
+            }
+
+            closeSettingsPopup();
+
+            return;
+        }
+
+        // --------------------------------------------------------
+
+        const userName =
+            document.querySelector(
+                '[data-testid="UserName"]'
+            );
+
+        if (!userName) {
+            return;
+        }
+
+        const profileOuter =
+            userName.parentElement;
+
+        if (!profileOuter) {
+            return;
+        }
+
+        // --------------------------------------------------------
+
+        const outerStyle =
+            getComputedStyle(
+                profileOuter
+            );
+
+        if (
+            outerStyle.position ===
+            'static'
+        ) {
+            profileOuter.style.position =
+                'relative';
+        }
+
+        if (
+            outerStyle.overflow ===
+            'hidden'
+        ) {
+            profileOuter.style.overflow =
+                'visible';
+        }
+
+        let wrapper =
+            existingWrapper;
+
+        let button =
+            wrapper?.querySelector(
+                '.x-profile-settings-button'
+            );
+
+        // --------------------------------------------------------
+
+        if (
+            wrapper &&
+            wrapper.dataset.username !==
+                currentUsername
+        ) {
+            wrapper.remove();
+
+            wrapper = null;
+            button = null;
+        }
+
+        // --------------------------------------------------------
+        // Recreate the button if X rebuilds the profile DOM
+        // --------------------------------------------------------
+
+        if (
+            wrapper &&
+            wrapper.parentElement !==
+                profileOuter
+        ) {
+            wrapper.remove();
+
+            wrapper = null;
+            button = null;
+        }
+
+        // --------------------------------------------------------
+
+        if (
+            !wrapper ||
+            !button
+        ) {
+            wrapper =
+                document.createElement(
+                    'div'
+                );
+
+            wrapper.className =
+                'x-profile-settings-wrapper';
+
+            wrapper.dataset.username =
+                currentUsername;
+
+            wrapper.style.cssText = `
+                position: absolute;
+
+                top: 53px;
+                right: 9px;
+
+                z-index: 21;
+
+                width: 22px;
+                height: 22px;
+
+                display: flex;
+                align-items: center;
+                justify-content: center;
+
+                pointer-events: auto;
+            `;
+
+            button =
+                document.createElement(
+                    'button'
+                );
+
+            button.className =
+                'x-profile-settings-button';
+
+            button.style.cssText = `
+                position: relative;
+
+                width: 22px;
+                height: 22px;
+
+                padding: 0;
+
+                border-style: solid;
+                border-width: 1px;
+                border-radius: 50%;
+
+                display: flex;
+                align-items: center;
+                justify-content: center;
+
+                font-size: 12px;
+                line-height: 1;
+                text-align: center;
+
+                cursor: pointer;
+                box-sizing: border-box;
+
+                transition:
+                    background-color 0.10s ease,
+                    border-color 0.10s ease,
+                    color 0.10s ease,
+                    filter 0.06s ease;
+            `;
+
+            const settingsIcon =
+                document.createElement(
+                    'span'
+                );
+
+            settingsIcon.textContent =
+                '⚙';
+
+            settingsIcon.style.cssText = `
+                position: absolute;
+
+                left: 0;
+                top: -1px;
+
+                width: 100%;
+                height: 100%;
+
+                display: flex;
+                align-items: center;
+                justify-content: center;
+
+                line-height: 1;
+                pointer-events: none;
+            `;
+
+            button.appendChild(
+                settingsIcon
+            );
+
+            addButtonEffects(
+                button
+            );
+
+            button.addEventListener(
+                'click',
+                function (event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    openSettingsPopup(
+                        button
+                    );
+                }
+            );
+
+            wrapper.appendChild(
+                button
+            );
+
+            profileOuter.appendChild(
+                wrapper
+            );
+        }
+
+        refreshSettingsButton();
+    }
+
+    // ============================================================
+    // Close popup when clicking outside
+    // ============================================================
+
+    document.addEventListener(
+        'click',
+        function (event) {
+            const popup =
+                document.querySelector(
+                    '.x-profile-settings-popup'
+                );
+
+            if (!popup) {
+                return;
+            }
+
+            if (
+                event.target.closest(
+                    '.x-profile-settings-button'
+                )
+            ) {
+                return;
+            }
+
+            if (!popup.contains(event.target)) {
+                closeSettingsPopup();
+            }
+        }
+    );
+
+    // ============================================================
+    // React onClick handler
+    // ============================================================
+
+    function findReactClickHandler(element) {
+        let node = element;
 
         for (
             let level = 0;
@@ -1104,12 +2085,10 @@
             node !== document.body;
             level++
         ) {
-
             const keys =
                 Object.keys(node);
 
             for (const key of keys) {
-
                 if (
                     key.indexOf(
                         '__reactProps'
@@ -1119,7 +2098,6 @@
                 }
 
                 try {
-
                     const props =
                         node[key];
 
@@ -1147,106 +2125,64 @@
         return null;
     }
 
-    // ============================================================
-    // React onClick을 Ctrl+Shift 상태로 직접 호출
-    // ============================================================
-
-    function invokeReactCtrlShift(
-        link
-    ) {
-
+    function invokeReactCtrlShift(link) {
         const found =
-            findReactClickHandler(
-                link
-            );
+            findReactClickHandler(link);
 
         if (!found) {
             return false;
         }
 
         const fakeEvent = {
+            type: 'click',
 
-            type:
-                'click',
-
-            target:
-                link,
-
+            target: link,
             currentTarget:
                 found.element,
 
-            ctrlKey:
-                true,
+            ctrlKey: true,
+            shiftKey: true,
+            metaKey: false,
+            altKey: false,
 
-            shiftKey:
-                true,
+            button: 0,
+            buttons: 1,
 
-            metaKey:
-                false,
-
-            altKey:
-                false,
-
-            button:
-                0,
-
-            buttons:
-                1,
-
-            defaultPrevented:
-                false,
+            defaultPrevented: false,
 
             preventDefault() {
-                this.defaultPrevented =
-                    true;
+                this.defaultPrevented = true;
             },
 
             stopPropagation() {},
-
             stopImmediatePropagation() {},
-
             persist() {},
 
             nativeEvent: {
-                ctrlKey:
-                    true,
-
-                shiftKey:
-                    true,
-
-                metaKey:
-                    false,
-
-                altKey:
-                    false,
-
-                button:
-                    0
+                ctrlKey: true,
+                shiftKey: true,
+                metaKey: false,
+                altKey: false,
+                button: 0
             }
         };
 
         try {
-
-            found.handler(
-                fakeEvent
-            );
-
+            found.handler(fakeEvent);
             return true;
 
         } catch (e) {
-
             return false;
         }
     }
 
     // ============================================================
-    // 링크 클릭
+    // Link click handling
     // ============================================================
 
     document.addEventListener(
         'click',
         function (event) {
-
             const link =
                 event.target.closest?.(
                     'a[href]'
@@ -1263,8 +2199,7 @@
                 );
 
             if (
-                url.origin !==
-                location.origin
+                url.origin !== location.origin
             ) {
                 return;
             }
@@ -1284,33 +2219,22 @@
             // ====================================================
 
             if (
-                /^\/[^/]+\/media$/.test(
-                    path
-                )
+                /^\/[^/]+\/media$/.test(path)
             ) {
-
                 event.preventDefault();
                 event.stopImmediatePropagation();
 
-                /*
-                 * Ctrl+Shift Toggle
-                 */
                 if (ctrlShift) {
-
                     const currentFilter =
                         new URL(
                             location.href
                         )
                             .searchParams
-                            .get(
-                                'filter'
-                            );
+                            .get('filter');
 
                     if (
-                        currentFilter ===
-                        'photo'
+                        currentFilter === 'photo'
                     ) {
-
                         navigate(
                             path,
                             '?filter=video'
@@ -1320,10 +2244,8 @@
                     }
 
                     if (
-                        currentFilter ===
-                        'video'
+                        currentFilter === 'video'
                     ) {
-
                         navigate(
                             path,
                             '?filter=photo'
@@ -1332,11 +2254,6 @@
                         return;
                     }
 
-                    /*
-                     * 혼합 / 다른 탭에서
-                     * Ctrl+Shift + Media
-                     * → Photo
-                     */
                     navigate(
                         path,
                         '?filter=photo'
@@ -1345,13 +2262,8 @@
                     return;
                 }
 
-                /*
-                 * 일반 클릭
-                 * → 구형 혼합 Media
-                 */
-                navigate(
-                    path
-                );
+                // Click → Legacy Media
+                navigate(path);
 
                 return;
             }
@@ -1365,80 +2277,45 @@
                     /^\/([^/]+)$/
                 );
 
-            if (profileMatch) {
+            if (!profileMatch) {
+                return;
+            }
 
-                const username =
-                    profileMatch[1];
+            const username =
+                profileMatch[1];
 
-                if (
-                    excludedPaths.has(
-                        username
-                            .toLowerCase()
-                    )
-                ) {
-                    return;
-                }
+            if (
+                excludedPaths.has(
+                    username.toLowerCase()
+                )
+            ) {
+                return;
+            }
 
-                const profilePath =
-                    '/' + username;
+            const profilePath =
+                '/' + username;
 
-                const allPath =
-                    profilePath +
-                    '/all';
+            const allPath =
+                profilePath + '/all';
 
-                /*
-                 * 프로필 상단 Posts 탭
-                 */
-                const tabList =
-                    link.closest(
-                        '[role="tablist"]'
+            const tabList =
+                link.closest(
+                    '[role="tablist"]'
+                );
+
+            // ----------------------------------------------------
+            // Posts tab at the top of the profile
+            // ----------------------------------------------------
+
+            if (tabList) {
+                const currentPath =
+                    location.pathname.replace(
+                        /\/$/,
+                        ''
                     );
 
-                if (tabList) {
-
-                    const currentPath =
-                        location.pathname
-                            .replace(
-                                /\/$/,
-                                ''
-                            );
-
-                    /*
-                     * 실제 Ctrl+Shift
-                     */
-                    if (ctrlShift) {
-
-                        /*
-                         * Posts / All에서는
-                         * X 원래 펼침메뉴
-                         */
-                        if (
-                            currentPath ===
-                                profilePath ||
-                            currentPath ===
-                                allPath
-                        ) {
-                            return;
-                        }
-
-                        /*
-                         * 다른 탭에서는
-                         * 원래 Posts로 이동
-                         */
-                        event.preventDefault();
-                        event.stopImmediatePropagation();
-
-                        navigate(
-                            profilePath
-                        );
-
-                        return;
-                    }
-
-                    /*
-                     * Posts / All에서는
-                     * X 원래 펼침메뉴
-                     */
+                if (ctrlShift) {
+                    // 
                     if (
                         currentPath ===
                             profilePath ||
@@ -1448,93 +2325,73 @@
                         return;
                     }
 
-                    /*
-                     * 답글 / 리트윗 / 미디어 /
-                     * 하이라이트 등 다른 탭에서는
-                     * 게시물 클릭 → All
-                     */
+                    // 
                     event.preventDefault();
                     event.stopImmediatePropagation();
 
-                    navigate(
+                    navigate(profilePath);
+
+                    return;
+                }
+
+                // 
+                if (
+                    currentPath ===
+                        profilePath ||
+                    currentPath ===
                         allPath
-                    );
-
+                ) {
                     return;
                 }
 
-                // =================================================
-                // 일반 프로필 링크
-                // =================================================
-
-                /*
-                 * Ctrl+Shift
-                 * → 원래 Posts
-                 */
-                if (ctrlShift) {
-
-                    event.preventDefault();
-                    event.stopImmediatePropagation();
-
-                    navigate(
-                        profilePath
-                    );
-
-                    return;
-                }
-
-                /*
-                 * 일반 프로필 클릭
-                 * → All
-                 */
+                // 
                 event.preventDefault();
                 event.stopImmediatePropagation();
 
-                navigate(
-                    allPath
-                );
+                navigate(allPath);
 
                 return;
             }
 
+            // ----------------------------------------------------
+            // Regular profile links
+            // ----------------------------------------------------
+
+            if (ctrlShift) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+
+                navigate(profilePath);
+
+                return;
+            }
+
+            event.preventDefault();
+            event.stopImmediatePropagation();
+
+            navigate(allPath);
         },
         true
     );
 
     // ============================================================
-    // SPA 대응 + 테마 자동 감지
+    // SPA support + automatic theme detection
     // ============================================================
 
-    let lastUrl =
-        location.href;
+    let lastUrl = location.href;
 
     setInterval(
         function () {
-
             if (
-                location.href !==
-                lastUrl
+                location.href !== lastUrl
             ) {
-
-                lastUrl =
-                    location.href;
-
-                /*
-                 * 같은 프로필 안의 SPA 이동에서는
-                 * 기존 버튼 DOM을 유지한다.
-                 *
-                 * 다른 프로필로 이동한 경우에는
-                 * ensureShortcutButtons()에서 자동 재생성.
-                 */
+                lastUrl = location.href;
             }
 
             if (!History_push) {
                 tryFindHistory();
             }
 
-            /*
-             * Light / Dark 테마가 바뀌었는지 확인
-             */
             const currentLightTheme =
                 isLightTheme();
 
@@ -1543,19 +2400,16 @@
                 currentLightTheme !==
                     lastLightTheme
             ) {
-
                 lastLightTheme =
                     currentLightTheme;
 
-                /*
-                 * Hover 중인 버튼은 Accent 유지,
-                 * 평상시 버튼만 새로운 Light/Dark 색으로 변경.
-                 */
                 refreshAllShortcutButtons();
+                refreshSettingsButton();
+                applySettingsPopupTheme();
             }
 
             ensureShortcutButtons();
-
+            ensureSettingsButton();
         },
         500
     );
