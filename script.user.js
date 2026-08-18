@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.11
+// @version      2.12
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -1987,29 +1987,45 @@
             `;
 
             const settingsIcon =
-                document.createElement(
-                    'span'
-                );
+                  document.createElementNS(
+                      'http://www.w3.org/2000/svg',
+                      'svg'
+                  );
 
-            settingsIcon.textContent =
-                '⚙';
+            settingsIcon.setAttribute(
+                'viewBox',
+                '0 0 24 24'
+            );
+
+            settingsIcon.setAttribute(
+                'aria-hidden',
+                'true'
+            );
 
             settingsIcon.style.cssText = `
-                position: absolute;
+                width: 14px;
+                height: 14px;
 
-                left: 0;
-                top: -1px;
+                display: block;
 
-                width: 100%;
-                height: 100%;
-
-                display: flex;
-                align-items: center;
-                justify-content: center;
-
-                line-height: 1;
+                fill: currentColor;
                 pointer-events: none;
             `;
+
+            const settingsIconPath =
+                  document.createElementNS(
+                      'http://www.w3.org/2000/svg',
+                      'path'
+                  );
+
+            settingsIconPath.setAttribute(
+                'd',
+                'M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.1 7.1 0 0 0-1.62-.94L14.38 2.8a.5.5 0 0 0-.49-.4h-3.84a.5.5 0 0 0-.49.4L9.2 5.32c-.58.24-1.12.56-1.62.94L5.19 5.3a.5.5 0 0 0-.61.22L2.66 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.05.31-.08.64-.08.96 0 .31.03.62.08.92L2.78 14.5a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .61.22l2.39-.96c.5.39 1.04.7 1.62.94l.36 2.54a.5.5 0 0 0 .49.4h3.84a.5.5 0 0 0 .49-.4l.36-2.54c.58-.24 1.12-.55 1.62-.94l2.39.96a.5.5 0 0 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.02-1.56zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z'
+            );
+
+            settingsIcon.appendChild(
+                settingsIconPath
+            );
 
             button.appendChild(
                 settingsIcon
