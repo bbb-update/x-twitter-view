@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.20
+// @version      2.2
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -61,7 +61,7 @@
     // E = Photos / Videos / Likes
     // J = 画像 / 動画 / いいね
     //
-    const DEFAULT_MEDIA_BUTTON_LANGUAGE = 'E';
+    const DEFAULT_MEDIA_BUTTON_LANGUAGE = 'J';
     //
     // ============================================================
 
@@ -1506,13 +1506,6 @@
             cursor: pointer;
         `;
 
-        const englishOption =
-            document.createElement('option');
-
-        englishOption.value = 'E';
-        englishOption.textContent =
-            'English';
-
         const japaneseOption =
             document.createElement('option');
 
@@ -1520,9 +1513,16 @@
         japaneseOption.textContent =
             '日本語';
 
+        const englishOption =
+            document.createElement('option');
+
+        englishOption.value = 'E';
+        englishOption.textContent =
+            'English';
+
         languageSelect.append(
-            englishOption,
-            japaneseOption
+            japaneseOption,
+            englishOption
         );
 
         languageSelect.value =
