@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.4
+// @version      2.5
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -2723,11 +2723,26 @@
     document.addEventListener(
         'click',
         function (event) {
-            const userCell =
+            const directSearchUser =
                 event.target.closest?.(
-                    '[data-testid="UserCell"], ' +
                     '[data-testid="TypeaheadUser"]'
                 );
+
+            const recentSearchItem =
+                event.target.closest?.(
+                    '[data-testid="typeaheadRecentSearchesItem"]'
+                );
+
+            const recentSearchUser =
+                recentSearchItem
+                    ? event.target.closest?.(
+                        '[data-testid="UserCell"]'
+                    )
+                    : null;
+
+            const userCell =
+                directSearchUser ||
+                recentSearchUser;
 
             if (userCell) {
                 const clickedButton =
