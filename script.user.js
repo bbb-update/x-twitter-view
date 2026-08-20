@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.2
+// @version      2.3
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -1185,7 +1185,7 @@
             title: '✦ Script Settings',
             media: 'Photos・Videos buttons',
             mediaNote:
-                'Can also switch with 【Ctrl+Shift+Media】',
+                'Can also switch with 【Ctrl+Shift+Media Click】',
             likes: 'Likes Navigation button',
             language: 'Language',
             color: 'Color',
