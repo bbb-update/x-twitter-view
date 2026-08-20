@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.3
+// @version      2.4
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -411,6 +411,47 @@
             )
         ) {
             return username;
+        }
+
+        return null;
+    }
+
+    function getUsernameFromUserCell(userCell) {
+        const avatar =
+            userCell.querySelector(
+                '[data-testid^="UserAvatar-Container-"]'
+            );
+
+        if (avatar) {
+            const testId =
+                avatar.getAttribute('data-testid') || '';
+
+            const username =
+                testId.replace(
+                    'UserAvatar-Container-',
+                    ''
+                );
+
+            if (/^[A-Za-z0-9_]{1,15}$/.test(username)) {
+                return username;
+            }
+        }
+
+        for (
+            const element of
+            userCell.querySelectorAll('span')
+        ) {
+            const text =
+                element.textContent.trim();
+
+            const match =
+                text.match(
+                    /^@([A-Za-z0-9_]{1,15})$/
+                );
+
+            if (match) {
+                return match[1];
+            }
         }
 
         return null;
@@ -2682,6 +2723,42 @@
     document.addEventListener(
         'click',
         function (event) {
+            const userCell =
+                event.target.closest?.(
+                    '[data-testid="UserCell"], ' +
+                    '[data-testid="TypeaheadUser"]'
+                );
+
+            if (userCell) {
+                const clickedButton =
+                    event.target.closest?.(
+                        'button'
+                    );
+
+                if (
+                    !clickedButton ||
+                    clickedButton === userCell
+                ) {
+                    const username =
+                        getUsernameFromUserCell(
+                            userCell
+                        );
+
+                    if (username) {
+                        event.preventDefault();
+                        event.stopImmediatePropagation();
+
+                        navigate(
+                            '/' +
+                            username +
+                            '/all'
+                        );
+
+                        return;
+                    }
+                }
+            }
+
             const link =
                 event.target.closest?.(
                     'a[href]'
