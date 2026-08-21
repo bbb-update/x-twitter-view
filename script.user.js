@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.6.2
+// @version      2.6.3
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -1524,7 +1524,7 @@
 		revertMediaCarousel:
                     'ポスト内メディアをグリッドに',
                 repostTimestamp:
-                    'リポスト(RT) 時刻表示',                
+                    'リポスト(RT) 時刻表示',
                 cancel: 'キャンセル',
                 save: '保存',
                 settings: '設定'
@@ -1542,7 +1542,7 @@
 	  revertMediaCarousel:
                 'Grid Media in Posts',
             repostTimestamp:
-                'Repost (RT) Timestamp',            
+                'Repost (RT) Timestamp',
             cancel: 'Cancel',
             save: 'Save',
             settings: 'Settings'
@@ -1706,15 +1706,43 @@
         const title =
             document.createElement('div');
 
-        title.textContent =
-            text.title;
-
         title.style.cssText = `
             margin-bottom: 12px;
 
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+        `;
+
+        const titleLabel =
+            document.createElement('span');
+
+        titleLabel.textContent =
+            text.title;
+
+        titleLabel.style.cssText = `
             font-size: 15px;
             font-weight: 700;
         `;
+
+        const shortcutNote =
+            document.createElement('span');
+
+        shortcutNote.textContent =
+            '【Ctrl+Shift+Z】';
+
+        shortcutNote.style.cssText = `
+            font-size: 10px;
+            font-weight: 400;
+            line-height: 1.45;
+
+            color: #71767b;
+        `;
+
+        title.append(
+            titleLabel,
+            shortcutNote
+        );
 
         popup.appendChild(title);
 
@@ -2237,7 +2265,7 @@
                     .getBoundingClientRect()
                 : {
                     right:
-                        window.innerWidth - 10,
+                        window.innerWidth - 25,
                     bottom: 10,
                     top: 10
                 };
