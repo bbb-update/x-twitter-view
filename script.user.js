@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.6
+// @version      2.6.2
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -292,6 +292,11 @@
     let History_replace = null;
     let shortcutUsername = null;
     let lastLightTheme = null;
+    let featureSwitchWrapperInstalled =
+        false;
+
+    let featureSwitchRefreshScheduled =
+        false;
 
     // ============================================================
     // Find top-level X React props
@@ -440,7 +445,8 @@
         mediaItems,
         switchingToGrid
     ) {
-        const articles = new Set();
+        const visibilityTargets =
+            new Set();
 
         for (const mediaItem of mediaItems) {
             const article =
@@ -483,34 +489,49 @@
                 continue;
             }
 
-            articles.add(article);
+            const visibilityTarget =
+                article.closest(
+                    '[data-testid="cellInnerDiv"]'
+                ) || article;
+
+            visibilityTargets.add(
+                visibilityTarget
+            );
         }
 
-        for (const article of articles) {
+        for (
+            const visibilityTarget of
+            visibilityTargets
+        ) {
             const previous = {
                 transform:
-                    article.style.transform,
+                    visibilityTarget
+                        .style.transform,
                 visibility:
-                    article.style.visibility,
+                    visibilityTarget
+                        .style.visibility,
                 pointerEvents:
-                    article.style.pointerEvents,
+                    visibilityTarget
+                        .style.pointerEvents,
                 transition:
-                    article.style.transition
+                    visibilityTarget
+                        .style.transition
             };
 
-            article.style.transition =
+            visibilityTarget.style.transition =
                 'none';
 
-            article.style.pointerEvents =
+            visibilityTarget.style.pointerEvents =
                 'none';
 
-            article.style.visibility =
+            visibilityTarget.style.visibility =
                 'hidden';
 
-            article.style.transform =
+            visibilityTarget.style.transform =
                 'translate3d(0, calc(100vh + 2000px), 0)';
 
-            article.getBoundingClientRect();
+            visibilityTarget
+                .getBoundingClientRect();
 
             function restoreArticle() {
                 if (restored) {
@@ -523,16 +544,16 @@
 
                 tryPatchFeatureSwitch();
 
-                article.style.transform =
+                visibilityTarget.style.transform =
                     previous.transform;
 
-                article.style.visibility =
+                visibilityTarget.style.visibility =
                     previous.visibility;
 
-                article.style.pointerEvents =
+                visibilityTarget.style.pointerEvents =
                     previous.pointerEvents;
 
-                article.style.transition =
+                visibilityTarget.style.transition =
                     previous.transition;
             }
 
@@ -749,8 +770,14 @@
                 .__xProfileMediaControlWrapper ===
                     true
         ) {
+            featureSwitchWrapperInstalled =
+                true;
+
             return true;
         }
+
+        const wrapperWasReplaced =
+            featureSwitchWrapperInstalled;
 
         const wrappedIsTrue =
             function (flag) {
@@ -789,6 +816,28 @@
 
         featureSwitches.isTrue =
             wrappedIsTrue;
+
+        featureSwitchWrapperInstalled =
+            true;
+
+        if (
+            wrapperWasReplaced &&
+            !featureSwitchRefreshScheduled
+        ) {
+            featureSwitchRefreshScheduled =
+                true;
+
+            setTimeout(
+                function () {
+                    featureSwitchRefreshScheduled =
+                        false;
+
+                    tryPatchFeatureSwitch();
+                    refreshCurrentRoute();
+                },
+                0
+            );
+        }
 
         return (
             featureSwitches.isTrue ===
@@ -1593,7 +1642,7 @@
     }
 
     function openSettingsPopup(
-        settingsButton
+        settingsButton = null
     ) {
         const existing =
             document.querySelector(
@@ -1616,6 +1665,11 @@
 
         popup.className =
             'x-profile-settings-popup';
+
+        if (!settingsButton) {
+            popup.dataset.globalShortcut =
+                'true';
+        }
 
         popup.style.cssText = `
             position: fixed;
@@ -2179,7 +2233,14 @@
 
         const buttonRect =
             settingsButton
-                .getBoundingClientRect();
+                ? settingsButton
+                    .getBoundingClientRect()
+                : {
+                    right:
+                        window.innerWidth - 10,
+                    bottom: 10,
+                    top: 10
+                };
 
         const popupRect =
             popup.getBoundingClientRect();
@@ -2200,9 +2261,12 @@
             );
 
         let top =
-            buttonRect.bottom + 8;
+            settingsButton
+                ? buttonRect.bottom + 8
+                : 10;
 
         if (
+            settingsButton &&
             top +
             popupRect.height >
             window.innerHeight - 10
@@ -2271,7 +2335,18 @@
                 existingWrapper.remove();
             }
 
-            closeSettingsPopup();
+            const popup =
+                document.querySelector(
+                    '.x-profile-settings-popup'
+                );
+
+            if (
+                !popup ||
+                popup.dataset
+                    .globalShortcut !== 'true'
+            ) {
+                closeSettingsPopup();
+            }
 
             return;
         }
@@ -2527,6 +2602,70 @@
                 closeSettingsPopup();
             }
         }
+    );
+
+    // ============================================================
+    // Global settings shortcut (Ctrl+Shift+Z)
+    // ============================================================
+
+    function isTextEntryTarget(target) {
+        if (
+            !target ||
+            typeof target.closest !== 'function'
+        ) {
+            return false;
+        }
+
+        if (
+            target.closest(
+                'textarea, select, [contenteditable="true"], [role="textbox"]'
+            )
+        ) {
+            return true;
+        }
+
+        const input =
+            target.closest('input');
+
+        if (!input) {
+            return false;
+        }
+
+        return [
+            'text',
+            'search',
+            'email',
+            'url',
+            'tel',
+            'password',
+            'number'
+        ].includes(
+            (input.type || 'text')
+                .toLowerCase()
+        );
+    }
+
+    document.addEventListener(
+        'keydown',
+        function (event) {
+            if (
+                event.code !== 'KeyZ' ||
+                !event.ctrlKey ||
+                !event.shiftKey ||
+                event.altKey ||
+                event.metaKey ||
+                event.repeat ||
+                isTextEntryTarget(event.target)
+            ) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopImmediatePropagation();
+
+            openSettingsPopup();
+        },
+        true
     );
 
     // ============================================================
