@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.5
+// @version      2.6
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -86,6 +86,16 @@
     // X = 非表示 / Hide
     //
     const DEFAULT_SHOW_REPOST_TIMESTAMP = 'X';
+    //
+    // ============================================================
+
+    // ============================================================
+    // 6. ポスト内のメディアをグリッド表示に / Grid Media in Posts
+    //
+    // O = 有効 / On
+    // X = 無効 / Off
+    //
+    const DEFAULT_REVERT_MEDIA_CAROUSEL = 'O';
     //
     // ============================================================
 
@@ -189,6 +199,14 @@
                 DEFAULT_SHOW_REPOST_TIMESTAMP
             ),
             DEFAULT_SHOW_REPOST_TIMESTAMP
+        ),
+
+        revertMediaCarousel: normalizeOnOff(
+            GM_getValue(
+                'revertMediaCarousel',
+                DEFAULT_REVERT_MEDIA_CAROUSEL
+            ),
+            DEFAULT_REVERT_MEDIA_CAROUSEL
         )
     };
 
@@ -232,6 +250,10 @@
             showRepostTimestamp: normalizeOnOff(
                 nextSettings.showRepostTimestamp,
                 DEFAULT_SHOW_REPOST_TIMESTAMP
+            ),
+            revertMediaCarousel: normalizeOnOff(
+                nextSettings.revertMediaCarousel,
+                DEFAULT_REVERT_MEDIA_CAROUSEL
             )
         };
 
@@ -259,9 +281,15 @@
             'showRepostTimestamp',
             userSettings.showRepostTimestamp
         );
+
+        GM_setValue(
+            'revertMediaCarousel',
+            userSettings.revertMediaCarousel
+        );
     }
 
     let History_push = null;
+    let History_replace = null;
     let shortcutUsername = null;
     let lastLightTheme = null;
 
@@ -328,6 +356,12 @@
 
         History_push = props.history.push;
 
+        History_replace =
+            typeof props.history.replace ===
+                'function'
+                ? props.history.replace
+                : null;
+
         return true;
     }
 
@@ -367,6 +401,211 @@
 
         location.href = pathname + search;
     }
+
+    function refreshCurrentRoute() {
+        tryPatchFeatureSwitch();
+
+        const mediaItems =
+            document.querySelectorAll(
+                'main [data-testid="tweetPhoto"]'
+            );
+
+        for (const mediaItem of mediaItems) {
+            const rect =
+                mediaItem.getBoundingClientRect();
+
+            if (
+                rect.bottom <= 0 ||
+                rect.top >= window.innerHeight ||
+                rect.right <= 0 ||
+                rect.left >= window.innerWidth
+            ) {
+                continue;
+            }
+
+            focusMediaComponent(mediaItem);
+        }
+
+        pulseVisibleMediaArticles(
+            mediaItems,
+            isEnabled(
+                userSettings.revertMediaCarousel
+            )
+        );
+
+        return mediaItems.length > 0;
+    }
+
+    function pulseVisibleMediaArticles(
+        mediaItems,
+        switchingToGrid
+    ) {
+        const articles = new Set();
+
+        for (const mediaItem of mediaItems) {
+            const article =
+                mediaItem.closest('article');
+
+            if (!article) {
+                continue;
+            }
+
+            const isCarousel =
+                Boolean(
+                    mediaItem.closest(
+                        '[data-testid="ScrollSnap-SwipeableList"], [data-testid="ScrollSnap-List"]'
+                    )
+                );
+
+            const isMultiImageGrid =
+                !isCarousel &&
+                article.querySelectorAll(
+                    '[data-testid="tweetPhoto"]'
+                ).length > 1;
+
+            if (
+                switchingToGrid
+                    ? !isCarousel
+                    : !isMultiImageGrid
+            ) {
+                continue;
+            }
+
+            const rect =
+                mediaItem.getBoundingClientRect();
+
+            if (
+                rect.bottom <= 0 ||
+                rect.top >= window.innerHeight ||
+                rect.right <= 0 ||
+                rect.left >= window.innerWidth
+            ) {
+                continue;
+            }
+
+            articles.add(article);
+        }
+
+        for (const article of articles) {
+            const previous = {
+                transform:
+                    article.style.transform,
+                visibility:
+                    article.style.visibility,
+                pointerEvents:
+                    article.style.pointerEvents,
+                transition:
+                    article.style.transition
+            };
+
+            article.style.transition =
+                'none';
+
+            article.style.pointerEvents =
+                'none';
+
+            article.style.visibility =
+                'hidden';
+
+            article.style.transform =
+                'translate3d(0, calc(100vh + 2000px), 0)';
+
+            article.getBoundingClientRect();
+
+            function restoreArticle() {
+                if (restored) {
+                    return;
+                }
+
+                restored = true;
+
+                clearTimeout(safetyTimer);
+
+                tryPatchFeatureSwitch();
+
+                article.style.transform =
+                    previous.transform;
+
+                article.style.visibility =
+                    previous.visibility;
+
+                article.style.pointerEvents =
+                    previous.pointerEvents;
+
+                article.style.transition =
+                    previous.transition;
+            }
+
+            let restored = false;
+
+            let safetyTimer = null;
+
+            safetyTimer = setTimeout(
+                restoreArticle,
+                40
+            );
+
+            requestAnimationFrame(
+                function () {
+                    requestAnimationFrame(
+                        restoreArticle
+                    );
+                }
+            );
+        }
+    }
+
+    function focusMediaComponent(mediaItem) {
+        if (!mediaItem) {
+            return;
+        }
+
+        const mediaLink =
+            mediaItem.closest('a[href]');
+
+        if (!mediaLink) {
+            return;
+        }
+
+        try {
+            mediaLink.focus({
+                preventScroll: true
+            });
+        } catch (e) {
+            mediaLink.focus();
+        }
+    }
+
+    document.addEventListener(
+        'pointerover',
+        function (event) {
+            if (
+                !isEnabled(
+                    userSettings.revertMediaCarousel
+                )
+            ) {
+                return;
+            }
+
+            const mediaItem =
+                event.target.closest &&
+                event.target.closest(
+                    '[data-testid="tweetPhoto"]'
+                );
+
+            if (
+                !mediaItem ||
+                !mediaItem.closest(
+                    '[data-testid="ScrollSnap-SwipeableList"], [data-testid="ScrollSnap-List"]'
+                )
+            ) {
+                return;
+            }
+
+            focusMediaComponent(mediaItem);
+        },
+        true
+    );
 
     // ============================================================
     // Detect profile pages
@@ -496,24 +735,36 @@
         const featureSwitches =
             props.contextProviderProps.featureSwitches;
 
-        if (
-            featureSwitches
-                .__legacyMediaControlPatched
-        ) {
-            return true;
-        }
-
-        const originalIsTrue =
+        const currentIsTrue =
             featureSwitches.isTrue;
 
         if (
-            typeof originalIsTrue !== 'function'
+            typeof currentIsTrue !== 'function'
         ) {
             return false;
         }
 
-        featureSwitches.isTrue =
+        if (
+            currentIsTrue
+                .__xProfileMediaControlWrapper ===
+                    true
+        ) {
+            return true;
+        }
+
+        const wrappedIsTrue =
             function (flag) {
+                if (
+                    isEnabled(
+                        userSettings
+                            .revertMediaCarousel
+                    ) &&
+                    flag ===
+                        'rweb_media_carousel_enabled'
+                ) {
+                    return false;
+                }
+
                 if (
                     flag ===
                         'responsive_web_profile_redesign_enabled' &&
@@ -522,31 +773,38 @@
                     return false;
                 }
 
-                return originalIsTrue.call(
+                return currentIsTrue.call(
                     this,
                     flag
                 );
             };
 
-        featureSwitches
-            .__legacyMediaControlPatched = true;
+        Object.defineProperty(
+            wrappedIsTrue,
+            '__xProfileMediaControlWrapper',
+            {
+                value: true
+            }
+        );
 
-        return true;
+        featureSwitches.isTrue =
+            wrappedIsTrue;
+
+        return (
+            featureSwitches.isTrue ===
+                wrappedIsTrue
+        );
     }
 
     const initTimer =
         setInterval(
             function () {
-                const flagReady =
-                    tryPatchFeatureSwitch();
+                tryPatchFeatureSwitch();
 
                 const historyReady =
                     tryFindHistory();
 
-                if (
-                    flagReady &&
-                    historyReady
-                ) {
+                if (historyReady) {
                     clearInterval(initTimer);
                 }
             },
@@ -1214,8 +1472,10 @@
                 likes: 'いいね欄 移動ボタン',
                 language: '表示言語',
                 color: 'カラー',
+		revertMediaCarousel:
+                    'ポスト内メディアをグリッドに',
                 repostTimestamp:
-                    'リポスト(RT) 時刻表示',
+                    'リポスト(RT) 時刻表示',                
                 cancel: 'キャンセル',
                 save: '保存',
                 settings: '設定'
@@ -1230,8 +1490,10 @@
             likes: 'Likes Navigation button',
             language: 'Language',
             color: 'Color',
+	  revertMediaCarousel:
+                'Grid Media in Posts',
             repostTimestamp:
-                'Repost (RT) Timestamp',
+                'Repost (RT) Timestamp',            
             cancel: 'Cancel',
             save: 'Save',
             settings: 'Settings'
@@ -1699,6 +1961,46 @@
             repostTimestampCheckbox
         );
 
+        // --------------------------------------------------------
+        // Revert Media Carousel
+        // --------------------------------------------------------
+
+        const revertMediaCarouselRow =
+            createRow(
+                text.revertMediaCarousel
+            );
+
+        const revertMediaCarouselCheckbox =
+            document.createElement(
+                'input'
+            );
+
+        revertMediaCarouselCheckbox.type =
+            'checkbox';
+
+        revertMediaCarouselCheckbox.checked =
+            isEnabled(
+                userSettings.revertMediaCarousel
+            );
+
+        revertMediaCarouselCheckbox.style.cssText = `
+            width: 17px;
+            height: 17px;
+
+            accent-color:
+                ${getAccentColor()};
+
+            cursor: pointer;
+        `;
+
+        revertMediaCarouselRow.appendChild(
+            revertMediaCarouselCheckbox
+        );
+
+        popup.appendChild(
+            revertMediaCarouselRow
+        );
+
         popup.appendChild(
             repostTimestampRow
         );
@@ -1797,12 +2099,14 @@
             'click',
             function (event) {
                 event.preventDefault();
-                event.stopPropagation();
 
                 const selectedColor =
                     popup.querySelector(
                         'input[name="x-settings-color"]:checked'
                     );
+
+                const previousRevertMediaCarousel =
+                    userSettings.revertMediaCarousel;
 
                 saveUserSettings({
                     showMediaButtons:
@@ -1817,6 +2121,11 @@
 
                     showRepostTimestamp:
                         repostTimestampCheckbox.checked
+                            ? 'O'
+                            : 'X',
+
+                    revertMediaCarousel:
+                        revertMediaCarouselCheckbox.checked
                             ? 'O'
                             : 'X',
 
@@ -1837,6 +2146,14 @@
                 refreshSettingsButton();
                 ensureSettingsButton();
                 refreshRepostTimestamps();
+                tryPatchFeatureSwitch();
+
+                if (
+                    previousRevertMediaCarousel !==
+                        userSettings.revertMediaCarousel
+                ) {
+                    refreshCurrentRoute();
+                }
             }
         );
 
@@ -1847,9 +2164,14 @@
 
         popup.appendChild(footer);
 
-        document.body.appendChild(
-            popup
-        );
+        const popupHost =
+            document.querySelector(
+                'main [data-testid="primaryColumn"]'
+            ) ||
+            document.querySelector('#react-root') ||
+            document.body;
+
+        popupHost.appendChild(popup);
 
         // --------------------------------------------------------
         // Display popup
@@ -2815,6 +3137,8 @@
                 event.preventDefault();
                 event.stopImmediatePropagation();
 
+                tryPatchFeatureSwitch();
+
                 if (ctrlShift) {
                     const currentFilter =
                         new URL(
@@ -2906,7 +3230,7 @@
                     );
 
                 if (ctrlShift) {
-                    // 
+                    //
                     if (
                         currentPath ===
                             profilePath ||
@@ -2916,7 +3240,7 @@
                         return;
                     }
 
-                    // 
+                    //
                     event.preventDefault();
                     event.stopImmediatePropagation();
 
@@ -2925,7 +3249,7 @@
                     return;
                 }
 
-                // 
+                //
                 if (
                     currentPath ===
                         profilePath ||
@@ -2935,7 +3259,7 @@
                     return;
                 }
 
-                // 
+                //
                 event.preventDefault();
                 event.stopImmediatePropagation();
 
@@ -2982,6 +3306,8 @@
             if (!History_push) {
                 tryFindHistory();
             }
+
+            tryPatchFeatureSwitch();
 
             const currentLightTheme =
                 isLightTheme();
