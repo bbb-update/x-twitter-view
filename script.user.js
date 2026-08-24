@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.6.3
+// @version      2.6.4
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -115,6 +115,45 @@
         'jobs',
         'communities'
     ]);
+
+    // ============================================================
+    // Direct profile entry (new tab / new window)
+    // ============================================================
+
+    function redirectDirectProfileEntryToAll() {
+        const parts =
+            location.pathname
+                .split('/')
+                .filter(Boolean);
+
+        if (parts.length !== 1) {
+            return false;
+        }
+
+        const username = parts[0];
+
+        if (
+            !/^[A-Za-z0-9_]{1,15}$/.test(username) ||
+            excludedPaths.has(username.toLowerCase())
+        ) {
+            return false;
+        }
+
+        location.replace(
+            location.origin +
+            '/' + username + '/all' +
+            location.search +
+            location.hash
+        );
+
+        return true;
+    }
+
+    // 새 탭/새 창은 클릭 이벤트를 거치지 않으므로,
+    // X가 Posts 화면을 그리기 전에 주소 자체를 All로 교체합니다.
+    if (redirectDirectProfileEntryToAll()) {
+        return;
+    }
 
     const accentColors = {
         1: '#1d9bf0',
