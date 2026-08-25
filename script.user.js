@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.7.8
+// @version      2.7.9
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -2365,7 +2365,7 @@
             'absolute';
 
         cancelButton.style.left =
-            'calc(50% + 50px)';
+            'calc(50% + 48px)';
 
         cancelButton.style.top =
             '0';
@@ -2398,7 +2398,7 @@
             'absolute';
 
         saveButton.style.left =
-            'calc(50% - 1px)';
+            '50%';
 
         saveButton.style.top =
             '0';
@@ -2564,7 +2564,7 @@
             ) || window.innerWidth <= 440;
 
         if (mobilePopupMode) {
-            popup.style.top = '10px';
+            popup.style.top = '55px';
             popup.style.right = '10px';
             popup.style.left = 'auto';
             popup.style.maxWidth =
@@ -2575,6 +2575,8 @@
                 'auto';
             popup.style.overscrollBehavior =
                 'contain';
+            popup.style.paddingBottom =
+                'calc(110px + env(safe-area-inset-bottom, 0px))';
         } else {
 
         const buttonRect =
