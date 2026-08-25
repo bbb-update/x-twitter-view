@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.7.9
+// @version      2.7.10
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -2575,8 +2575,15 @@
                 'auto';
             popup.style.overscrollBehavior =
                 'contain';
-            popup.style.paddingBottom =
-                'calc(110px + env(safe-area-inset-bottom, 0px))';
+
+            const needsBottomClearance =
+                popup.scrollHeight >
+                window.innerHeight - 130;
+
+            if (needsBottomClearance) {
+                popup.style.paddingBottom =
+                    'calc(110px + env(safe-area-inset-bottom, 0px))';
+            }
         } else {
 
         const buttonRect =
