@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.6.4
+// @version      2.7.4
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -25,6 +25,16 @@
     //
     // The values below are the defaults used on first install.
     // Once saved from the Settings button, the saved settings take priority.
+    // ============================================================
+
+    // ============================================================
+    // 0. メディアタブを「写真」から表示 / Open Media Tab from “Photos”
+    //
+    // O = 写真タブ / Photos tab
+    // X = 写真・動画混合表示 / Mixed Photos・Videos
+    //
+    const DEFAULT_OPEN_MEDIA_FROM_PHOTO = 'X';
+    //
     // ============================================================
 
     // ============================================================
@@ -155,6 +165,39 @@
         return;
     }
 
+    function redirectDirectMediaEntryToPhoto() {
+        if (!/^\/[^/]+\/media\/?$/.test(location.pathname)) {
+            return false;
+        }
+
+        const params = new URLSearchParams(location.search);
+
+        if (
+            params.has('filter') ||
+            String(GM_getValue(
+                'openMediaFromPhoto',
+                DEFAULT_OPEN_MEDIA_FROM_PHOTO
+            )).toUpperCase() !== 'O'
+        ) {
+            return false;
+        }
+
+        params.set('filter', 'photo');
+        location.replace(
+            location.origin +
+            location.pathname +
+            '?' + params.toString() +
+            location.hash
+        );
+
+        return true;
+    }
+
+    // 새 탭·새 창·직접 주소 진입에서도 사진 탭을 우선합니다.
+    if (redirectDirectMediaEntryToPhoto()) {
+        return;
+    }
+
     const accentColors = {
         1: '#1d9bf0',
         2: '#ffd400',
@@ -202,6 +245,14 @@
     }
 
     let userSettings = {
+        openMediaFromPhoto: normalizeOnOff(
+            GM_getValue(
+                'openMediaFromPhoto',
+                DEFAULT_OPEN_MEDIA_FROM_PHOTO
+            ),
+            DEFAULT_OPEN_MEDIA_FROM_PHOTO
+        ),
+
         showMediaButtons: normalizeOnOff(
             GM_getValue(
                 'showMediaButtons',
@@ -269,6 +320,11 @@
 
     function saveUserSettings(nextSettings) {
         userSettings = {
+            openMediaFromPhoto: normalizeOnOff(
+                nextSettings.openMediaFromPhoto,
+                DEFAULT_OPEN_MEDIA_FROM_PHOTO
+            ),
+
             showMediaButtons: normalizeOnOff(
                 nextSettings.showMediaButtons,
                 DEFAULT_SHOW_MEDIA_BUTTONS
@@ -295,6 +351,11 @@
                 DEFAULT_REVERT_MEDIA_CAROUSEL
             )
         };
+
+        GM_setValue(
+            'openMediaFromPhoto',
+            userSettings.openMediaFromPhoto
+        );
 
         GM_setValue(
             'showMediaButtons',
@@ -1554,6 +1615,11 @@
         if (userSettings.language === 'J') {
             return {
                 title: '✦ スクリプト設定',
+                openMediaFromPhoto:
+                    'メディアタブを「写真」から表示',
+                openMediaFromPhotoNote:
+                    ' オフ状態の場合、デフォルト設定の\n' +
+                    '【写真・動画の混合グリッド】で表示されます',
                 media: '写真・動画 表示ボタン',
                 mediaNote:
                     '【Ctrl+Shift+メディア】でも切り替えられます',
@@ -1572,6 +1638,11 @@
 
         return {
             title: '✦ Script Settings',
+            openMediaFromPhoto:
+                'Open Media Tab from “Photos”',
+            openMediaFromPhotoNote:
+                ' When off, the default\n' +
+                '【Mixed Photos・Videos Grid】 is shown',
             media: 'Photos・Videos buttons',
             mediaNote:
                 'Can also switch with 【Ctrl+Shift+Media Click】',
@@ -1814,7 +1885,65 @@
         }
 
         // --------------------------------------------------------
-        // Media ON/OFF
+        // Open Media from Photos ON/OFF
+        // --------------------------------------------------------
+
+        const openMediaFromPhotoRow =
+            createRow(text.openMediaFromPhoto);
+
+        const openMediaFromPhotoCheckbox =
+            document.createElement('input');
+
+        openMediaFromPhotoCheckbox.type =
+            'checkbox';
+
+        openMediaFromPhotoCheckbox.checked =
+            isEnabled(
+                userSettings.openMediaFromPhoto
+            );
+
+        openMediaFromPhotoCheckbox.style.cssText = `
+            width: 17px;
+            height: 17px;
+
+            accent-color:
+                ${getAccentColor()};
+
+            cursor: pointer;
+        `;
+
+        openMediaFromPhotoRow.appendChild(
+            openMediaFromPhotoCheckbox
+        );
+
+        popup.appendChild(
+            openMediaFromPhotoRow
+        );
+
+        const openMediaFromPhotoNote =
+            document.createElement('div');
+
+        openMediaFromPhotoNote.textContent =
+            text.openMediaFromPhotoNote;
+
+        openMediaFromPhotoNote.style.cssText = `
+            margin-top: -7px;
+            margin-bottom: 0px;
+            padding-right: 4px;
+
+            font-size: 10px;
+            line-height: 1.45;
+            white-space: pre-wrap;
+
+            color: #71767b;
+        `;
+
+        popup.appendChild(
+            openMediaFromPhotoNote
+        );
+
+        // --------------------------------------------------------
+        // Media buttons ON/OFF
         // --------------------------------------------------------
 
         const mediaRow =
@@ -2229,7 +2358,15 @@
                 const previousRevertMediaCarousel =
                     userSettings.revertMediaCarousel;
 
+                const previousOpenMediaFromPhoto =
+                    userSettings.openMediaFromPhoto;
+
                 saveUserSettings({
+                    openMediaFromPhoto:
+                        openMediaFromPhotoCheckbox.checked
+                            ? 'O'
+                            : 'X',
+
                     showMediaButtons:
                         mediaCheckbox.checked
                             ? 'O'
@@ -2274,6 +2411,23 @@
                         userSettings.revertMediaCarousel
                 ) {
                     refreshCurrentRoute();
+                }
+
+                if (
+                    previousOpenMediaFromPhoto !==
+                        userSettings.openMediaFromPhoto &&
+                    /^\/[^/]+\/media\/?$/.test(
+                        location.pathname
+                    )
+                ) {
+                    navigate(
+                        location.pathname,
+                        isEnabled(
+                            userSettings.openMediaFromPhoto
+                        )
+                            ? '?filter=photo'
+                            : ''
+                    );
                 }
             }
         );
@@ -3302,6 +3456,73 @@
                 }
             }
 
+            // ====================================================
+            // Native Photos / Videos popup menu
+            // ====================================================
+
+            const mediaMenuItem =
+                event.target.closest?.(
+                    '[role="menuitem"]'
+                );
+
+            if (
+                mediaMenuItem &&
+                isEnabled(
+                    userSettings.openMediaFromPhoto
+                ) &&
+                /^\/[^/]+\/media\/?$/.test(
+                    location.pathname
+                )
+            ) {
+                const currentFilter =
+                    new URL(location.href)
+                        .searchParams
+                        .get('filter');
+
+                const isCurrentItem = Boolean(
+                    mediaMenuItem.querySelector('svg') ||
+                    mediaMenuItem.getAttribute(
+                        'aria-checked'
+                    ) === 'true' ||
+                    mediaMenuItem.getAttribute(
+                        'aria-selected'
+                    ) === 'true'
+                );
+
+                let selectedFilter = null;
+
+                if (
+                    currentFilter === 'photo' ||
+                    currentFilter === 'video'
+                ) {
+                    selectedFilter =
+                        isCurrentItem
+                            ? currentFilter
+                            : currentFilter === 'photo'
+                                ? 'video'
+                                : 'photo';
+                }
+
+                if (selectedFilter) {
+                    const mediaPath =
+                        location.pathname.replace(/\/$/, '');
+
+                    // X 자체 클릭 처리가 먼저 메뉴를 닫도록 이벤트를
+                    // 막지 않고, 이벤트 종료 직후 올바른 필터로 이동합니다.
+                    setTimeout(
+                        function () {
+                            navigate(
+                                mediaPath,
+                                '?filter=' + selectedFilter
+                            );
+                        },
+                        0
+                    );
+
+                    return;
+                }
+            }
+
             const link =
                 event.target.closest?.(
                     'a[href]'
@@ -3340,19 +3561,41 @@
             if (
                 /^\/[^/]+\/media$/.test(path)
             ) {
+                const currentMediaPath =
+                    location.pathname.replace(
+                        /\/$/,
+                        ''
+                    );
+
+                const currentFilter =
+                    new URL(location.href)
+                        .searchParams
+                        .get('filter');
+
+                // 写真優先が有効で、すでに写真・動画タブ内にいる場合は
+                // X 本来のクリック処理に渡して展開メニューを開きます。
+                if (
+                    !ctrlShift &&
+                    isEnabled(
+                        userSettings.openMediaFromPhoto
+                    ) &&
+                    /^\/[^/]+\/media$/.test(
+                        currentMediaPath
+                    ) &&
+                    (
+                        currentFilter === 'photo' ||
+                        currentFilter === 'video'
+                    )
+                ) {
+                    return;
+                }
+
                 event.preventDefault();
                 event.stopImmediatePropagation();
 
                 tryPatchFeatureSwitch();
 
                 if (ctrlShift) {
-                    const currentFilter =
-                        new URL(
-                            location.href
-                        )
-                            .searchParams
-                            .get('filter');
-
                     if (
                         currentFilter === 'photo'
                     ) {
@@ -3383,8 +3626,19 @@
                     return;
                 }
 
-                // Click → Legacy Media
-                navigate(path);
+                // Normal click → selected default Media view
+                if (
+                    isEnabled(
+                        userSettings.openMediaFromPhoto
+                    )
+                ) {
+                    navigate(
+                        path,
+                        '?filter=photo'
+                    );
+                } else {
+                    navigate(path);
+                }
 
                 return;
             }
