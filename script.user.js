@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.7.4
+// @version      2.7.8
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -28,7 +28,7 @@
     // ============================================================
 
     // ============================================================
-    // 0. メディアタブを「写真」から表示 / Open Media Tab from “Photos”
+    // 0. 「メディア」を写真タブから表示 / Open Media from Photos
     //
     // O = 写真タブ / Photos tab
     // X = 写真・動画混合表示 / Mixed Photos・Videos
@@ -1405,7 +1405,7 @@
         ) {
             const likesButton =
                 createShortcutButton(
-                    '♡',
+                    '',
                     34,
                     function () {
                         navigate(
@@ -1413,6 +1413,28 @@
                         );
                     }
                 );
+
+            likesButton.setAttribute(
+                'aria-label',
+                userSettings.language === 'J'
+                    ? 'いいね'
+                    : 'Likes'
+            );
+
+            likesButton.innerHTML =
+                '<svg viewBox="0 -960 960 960" aria-hidden="true" ' +
+                'style="width:14px;height:14px;display:block;fill:currentColor;pointer-events:none">' +
+                '<path d="m480-120-58-52q-101-91-167-157T150-447.5Q111-500 95.5-544T80-634q0-94 63-157t157-63q52 0 99 22t81 62q34-40 81-62t99-22q94 0 157 63t63 157q0 46-15.5 90T810-447.5Q771-395 705-329T538-172l-58 52Zm0-108q96-86 158-147.5t98-107q36-45.5 50-81t14-70.5q0-60-40-100t-100-40q-47 0-87 26.5T518-680h-76q-15-41-55-67.5T300-774q-60 0-100 40t-40 100q0 35 14 70.5t50 81q36 45.5 98 107T480-228Zm0-273Z"/>' +
+                '</svg>';
+
+            likesButton.style.display =
+                'inline-flex';
+
+            likesButton.style.alignItems =
+                'center';
+
+            likesButton.style.justifyContent =
+                'center';
 
             likesButton.title =
                 userSettings.language === 'J'
@@ -2265,10 +2287,8 @@
         footer.style.cssText = `
             margin-top: 14px;
 
-            display: flex;
-            justify-content: flex-end;
-
-            gap: 8px;
+            position: relative;
+            height: 30px;
         `;
 
         function createActionButton(label) {
@@ -2285,10 +2305,12 @@
                 label;
 
             button.style.cssText = `
-                min-width: 72px;
+                width: 80px;
+                min-width: 80px;
                 height: 30px;
 
-                padding: 0 12px;
+                padding: 0 8px;
+                flex: 0 0 80px;
 
                 border: 1px solid ${base.border};
                 border-radius: 7px;
@@ -2317,6 +2339,43 @@
                 text.cancel
             );
 
+        cancelButton.textContent = '';
+
+        cancelButton.setAttribute(
+            'aria-label',
+            text.cancel
+        );
+
+        cancelButton.title =
+            text.cancel;
+
+        cancelButton.style.width =
+            '30px';
+
+        cancelButton.style.minWidth =
+            '30px';
+
+        cancelButton.style.flex =
+            '0 0 30px';
+
+        cancelButton.style.padding =
+            '0';
+
+        cancelButton.style.position =
+            'absolute';
+
+        cancelButton.style.left =
+            'calc(50% + 50px)';
+
+        cancelButton.style.top =
+            '0';
+
+        cancelButton.innerHTML =
+            '<svg viewBox="0 0 24 24" aria-hidden="true" ' +
+            'style="width:14px;height:14px;display:block;fill:currentColor;pointer-events:none">' +
+            '<path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.41 4.29 19.71 2.88 18.3 9.17 12 2.88 5.7 4.29 4.29 10.59 10.59 16.89 4.29z"/>' +
+            '</svg>';
+
         const saveButton =
             createActionButton(
                 text.save
@@ -2334,6 +2393,53 @@
 
         saveButton.style.color =
             getAccentTextColor();
+
+        saveButton.style.position =
+            'absolute';
+
+        saveButton.style.left =
+            'calc(50% - 1px)';
+
+        saveButton.style.top =
+            '0';
+
+        saveButton.style.transform =
+            'translateX(-50%)';
+
+        saveButton.style.transition =
+            'filter 0.12s ease';
+
+        saveButton.addEventListener(
+            'mouseenter',
+            function () {
+                saveButton.style.filter =
+                    'brightness(1.12)';
+            }
+        );
+
+        saveButton.addEventListener(
+            'mouseleave',
+            function () {
+                saveButton.style.filter =
+                    'none';
+            }
+        );
+
+        saveButton.addEventListener(
+            'mousedown',
+            function () {
+                saveButton.style.filter =
+                    `brightness(${getPressedBrightness()})`;
+            }
+        );
+
+        saveButton.addEventListener(
+            'mouseup',
+            function () {
+                saveButton.style.filter =
+                    'brightness(1.12)';
+            }
+        );
 
         cancelButton.addEventListener(
             'click',
@@ -2433,8 +2539,8 @@
         );
 
         footer.append(
-            cancelButton,
-            saveButton
+            saveButton,
+            cancelButton
         );
 
         popup.appendChild(footer);
@@ -2451,6 +2557,25 @@
         // --------------------------------------------------------
         // Display popup
         // --------------------------------------------------------
+
+        const mobilePopupMode =
+            /Android|Mobi|iPhone|iPad|iPod/i.test(
+                navigator.userAgent
+            ) || window.innerWidth <= 440;
+
+        if (mobilePopupMode) {
+            popup.style.top = '10px';
+            popup.style.right = '10px';
+            popup.style.left = 'auto';
+            popup.style.maxWidth =
+                'calc(100vw - 20px)';
+            popup.style.maxHeight =
+                'calc(100dvh - 20px)';
+            popup.style.overflowY =
+                'auto';
+            popup.style.overscrollBehavior =
+                'contain';
+        } else {
 
         const buttonRect =
             settingsButton
@@ -2503,6 +2628,8 @@
 
         popup.style.top =
             `${Math.round(top)}px`;
+
+        }
 
         applySettingsPopupTheme();
 
