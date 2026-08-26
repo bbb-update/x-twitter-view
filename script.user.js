@@ -2546,14 +2546,7 @@
 
         popup.appendChild(footer);
 
-        const popupHost =
-            document.querySelector(
-                'main [data-testid="primaryColumn"]'
-            ) ||
-            document.querySelector('#react-root') ||
-            document.body;
-
-        popupHost.appendChild(popup);
+        document.body.appendChild(popup);
 
         // --------------------------------------------------------
         // Display popup
