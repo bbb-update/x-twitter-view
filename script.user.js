@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.7.12
+// @version      2.7.13
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -1688,7 +1688,7 @@
     function closeSettingsPopup() {
         const popup =
             document.querySelector(
-                '.x-profile-settings-popup'
+                '.x-default-settings-popup'
             );
 
         if (popup) {
@@ -1699,7 +1699,7 @@
     function applySettingsPopupTheme() {
         const popup =
             document.querySelector(
-                '.x-profile-settings-popup'
+                '.x-default-settings-popup'
             );
 
         if (!popup) {
@@ -1778,7 +1778,7 @@
     ) {
         const existing =
             document.querySelector(
-                '.x-profile-settings-popup'
+                '.x-default-settings-popup'
             );
 
         if (existing) {
@@ -1796,7 +1796,7 @@
             document.createElement('div');
 
         popup.className =
-            'x-profile-settings-popup';
+            'x-default-settings-popup';
 
         if (!settingsButton) {
             popup.dataset.globalShortcut =
@@ -2682,7 +2682,7 @@
 
             const popup =
                 document.querySelector(
-                    '.x-profile-settings-popup'
+                    '.x-default-settings-popup'
                 );
 
             if (
@@ -2928,7 +2928,7 @@
         function (event) {
             const popup =
                 document.querySelector(
-                    '.x-profile-settings-popup'
+                    '.x-default-settings-popup'
                 );
 
             if (!popup) {
