@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      2.7.10
+// @version      2.7.12
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -2117,6 +2117,7 @@
 
         const colorRow =
             createRow(text.color);
+            colorRow.style.marginTop = '-3px';
 
         const colorGroup =
             document.createElement('div');
@@ -2563,29 +2564,6 @@
                 navigator.userAgent
             ) || window.innerWidth <= 440;
 
-        if (mobilePopupMode) {
-            popup.style.top = '55px';
-            popup.style.right = '10px';
-            popup.style.left = 'auto';
-            popup.style.maxWidth =
-                'calc(100vw - 20px)';
-            popup.style.maxHeight =
-                'calc(100dvh - 20px)';
-            popup.style.overflowY =
-                'auto';
-            popup.style.overscrollBehavior =
-                'contain';
-
-            const needsBottomClearance =
-                popup.scrollHeight >
-                window.innerHeight - 130;
-
-            if (needsBottomClearance) {
-                popup.style.paddingBottom =
-                    'calc(80px + env(safe-area-inset-bottom, 0px))';
-            }
-        } else {
-
         const buttonRect =
             settingsButton
                 ? settingsButton
@@ -2593,9 +2571,13 @@
                 : {
                     right:
                         window.innerWidth - 25,
-                    bottom: 10,
                     top: 10
                 };
+
+        if (mobilePopupMode) {
+            popup.style.maxWidth =
+                'calc(100vw - 20px)';
+        }
 
         const popupRect =
             popup.getBoundingClientRect();
@@ -2615,21 +2597,36 @@
                 )
             );
 
-        let top =
+        const preferredTop =
             settingsButton
-                ? buttonRect.bottom + 8
+                ? buttonRect.top
                 : 10;
 
-        if (
-            settingsButton &&
-            top +
-            popupRect.height >
-            window.innerHeight - 10
-        ) {
-            top =
-                buttonRect.top -
-                popupRect.height -
-                8;
+        const hasEnoughVerticalSpace =
+            preferredTop +
+            popupRect.height <=
+            window.innerHeight - 10;
+
+        const fixedTop =
+            mobilePopupMode
+                ? 28
+                : 10;
+
+        const top =
+            hasEnoughVerticalSpace
+                ? preferredTop
+                : fixedTop;
+
+        if (!hasEnoughVerticalSpace) {
+            popup.style.maxHeight =
+                `calc(100dvh - ${fixedTop + 10}px)`;
+
+            popup.style.overflowY =
+                'auto';
+
+            popup.style.overscrollBehavior =
+                'contain';
+
         }
 
         popup.style.left =
@@ -2637,8 +2634,6 @@
 
         popup.style.top =
             `${Math.round(top)}px`;
-
-        }
 
         applySettingsPopupTheme();
 
