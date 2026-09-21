@@ -44,7 +44,7 @@
     // 「すべて」で他者宛の返信を隠す / Hide replies to others in “All”
     const DEFAULT_HIDE_OTHER_MENTIONS_IN_ALL = 'O';
 
-    // フォロー中宛も非表示 / Hide replies to followed users
+    // フォロー中の人宛の返信も隠す / Hide replies to followed users
     const DEFAULT_HIDE_FOLLOWED_MENTIONS_IN_ALL = 'X';
 
     // 返信を隠したポストに目印 / Mark posts with hidden replies
@@ -1722,7 +1722,7 @@
                 hideOtherMentionsInAll:
                     '「すべて」で他者宛の返信を隠す',
                 hideFollowedMentionsInAll:
-                    '└ フォロー中宛も非表示',
+                    '└ フォロー中の人宛の返信も隠す',
                 showHiddenReplyMarker:
                     '└ 返信を隠したポストに目印',
                 hideUnfollowedMentionsInHome:
