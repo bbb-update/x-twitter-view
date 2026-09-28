@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      3.0.0
+// @version      3.0.1
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -5185,24 +5185,29 @@
     (document.head || document.documentElement)
         .appendChild(hiddenOtherMentionStyle);
 
+    function getAllCellTweetId(cell) {
+        return cell.querySelector(
+            'article[data-testid="tweet"] ' +
+            'time[datetime]'
+        )?.closest(
+            'a[href*="/status/"]'
+        )?.getAttribute('href')
+            ?.match(/\/status\/(\d+)/)?.[1] || '';
+    }
+
     function refreshRememberedAllCell(
         cell,
         rememberedTweetIds
     ) {
-        const shouldHide =
-            Array.from(
-                cell.querySelectorAll(
-                    'a[href*="/status/"]'
-                )
-            ).some(link => {
-                const tweetId =
-                    link
-                        .getAttribute('href')
-                        ?.match(/\/status\/(\d+)/)?.[1];
+        const currentTweetId =
+            getAllCellTweetId(cell);
 
-                return tweetId &&
-                    rememberedTweetIds.has(tweetId);
-            });
+        if (!currentTweetId) {
+            return;
+        }
+
+        const shouldHide =
+            rememberedTweetIds.has(currentTweetId);
 
         cell.classList.toggle(
             hiddenOtherMentionClass,
@@ -5214,18 +5219,8 @@
                 '.' + hiddenReplyMarkerClass
             );
 
-        const currentTweetId =
-            cell.querySelector(
-                'article[data-testid="tweet"] ' +
-                'time[datetime]'
-            )?.closest(
-                'a[href*="/status/"]'
-            )?.getAttribute('href')
-                ?.match(/\/status\/(\d+)/)?.[1];
-
         if (
             marker &&
-            currentTweetId &&
             marker.dataset.tweetId !==
                 currentTweetId
         ) {
@@ -6358,7 +6353,19 @@
 
         const cellsToShow =
             Array.from(hiddenCells).filter(
-                cell => !desiredHiddenCells.has(cell)
+                cell => {
+                    if (desiredHiddenCells.has(cell)) {
+                        return false;
+                    }
+
+                    const currentTweetId =
+                        getAllCellTweetId(cell);
+
+                    return Boolean(currentTweetId) &&
+                        !rememberedTweetIds.has(
+                            currentTweetId
+                        );
+                }
             );
 
         const cellsToHide =
