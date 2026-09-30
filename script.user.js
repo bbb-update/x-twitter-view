@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      3.0.1
+// @version      3.0.2
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -4792,6 +4792,37 @@
     // Link click handling
     // ============================================================
 
+    function redirectNativeProfileSelectionToAll(
+        username,
+        previousPath
+    ) {
+        for (const delay of [0, 50, 150, 300]) {
+            setTimeout(
+                function () {
+                    const currentPath =
+                        location.pathname.replace(/\/$/, '');
+
+                    if (
+                        currentPath === previousPath ||
+                        !isEnabled(
+                            userSettings.openProfileFromAll
+                        )
+                    ) {
+                        return;
+                    }
+
+                    if (
+                        currentPath.toLowerCase() ===
+                            ('/' + username).toLowerCase()
+                    ) {
+                        navigate('/' + username + '/all');
+                    }
+                },
+                delay
+            );
+        }
+    }
+
     document.addEventListener(
         'click',
         function (event) {
@@ -4832,13 +4863,9 @@
                         );
 
                     if (username) {
-                        event.preventDefault();
-                        event.stopImmediatePropagation();
-
-                        navigate(
-                            '/' +
-                            username +
-                            '/all'
+                        redirectNativeProfileSelectionToAll(
+                            username,
+                            location.pathname.replace(/\/$/, '')
                         );
 
                         return;
