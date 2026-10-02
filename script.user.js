@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      3.0.2
+// @version      3.0.3
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -2768,7 +2768,7 @@
             document.createElement('div');
 
         firstSettingsSeparator.style.cssText =
-            `height:0;margin:6px 0;` +
+            `height:0;margin:5px 0;` +
             `border-top:1px solid ${base.border};` +
             `box-sizing:border-box;opacity:.85;`;
 
@@ -2776,7 +2776,9 @@
             document.createElement('div');
 
         secondSettingsSeparator.style.cssText =
-            firstSettingsSeparator.style.cssText;
+            `height:0;margin:5px 0 2px;` +
+            `border-top:1px solid ${base.border};` +
+            `box-sizing:border-box;opacity:.85;`;
 
         popup.append(
             openMediaFromPhotoRow,
