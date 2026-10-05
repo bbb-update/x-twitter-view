@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      3.0.3
+// @version      3.0.4
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -7028,6 +7028,13 @@
                     '[data-testid="cellInnerDiv"]'
                 );
 
+            if (tweetId && authorUsername) {
+                tweetAuthors.set(
+                    tweetId,
+                    authorUsername
+                );
+            }
+
             if (tweetId && cell) {
                 cellsByTweetId.set(
                     tweetId,
@@ -7145,7 +7152,7 @@
                     ? replyTargets.get(tweetId)
                     : null;
 
-            const targetUsername =
+            let targetUsername =
                 replyTarget ||
                 (
                     targetMatch &&
@@ -7158,8 +7165,42 @@
                 continue;
             }
 
-            const normalizedTarget =
+            let normalizedTarget =
                 targetUsername.toLowerCase();
+
+            if (
+                tweetId &&
+                normalizedTarget === authorUsername
+            ) {
+                let ancestorId = tweetId;
+
+                for (
+                    let depth = 0;
+                    ancestorId && depth < 20;
+                    depth++
+                ) {
+                    ancestorId =
+                        replyParentIds.get(ancestorId);
+
+                    if (!ancestorId) {
+                        break;
+                    }
+
+                    const ancestorTarget = String(
+                        replyTargets.get(ancestorId) || ''
+                    ).toLowerCase();
+
+                    if (
+                        ancestorTarget &&
+                        ancestorTarget !== authorUsername &&
+                        ancestorTarget !== authenticatedUsername
+                    ) {
+                        targetUsername = ancestorTarget;
+                        normalizedTarget = ancestorTarget;
+                        break;
+                    }
+                }
+            }
 
             if (
                 normalizedTarget ===
@@ -7217,6 +7258,77 @@
             if (cell) {
                 desiredHiddenCells.add(cell);
             }
+        }
+
+        const orderedCells = Array.from(
+            document.querySelectorAll(
+                '[data-testid="cellInnerDiv"]'
+            )
+        );
+
+        const tweetIdsByCell = new Map();
+
+        for (const [tweetId, cell] of cellsByTweetId) {
+            tweetIdsByCell.set(cell, tweetId);
+        }
+
+        for (
+            let index = 0;
+            index < orderedCells.length;
+            index++
+        ) {
+            const cell = orderedCells[index];
+            const tweetId = tweetIdsByCell.get(cell);
+
+            if (!tweetId || desiredHiddenCells.has(cell)) {
+                continue;
+            }
+
+            const article = cell.querySelector(
+                'article[data-testid="tweet"]'
+            );
+
+            if (
+                !article?.querySelector(
+                    '.r-1bnu78o.r-f8sm7e.r-m5arl1' +
+                    '.r-16y2uox.r-14gqq1x'
+                )
+            ) {
+                continue;
+            }
+
+            let nextCell = null;
+
+            for (
+                let nextIndex = index + 1;
+                nextIndex < orderedCells.length;
+                nextIndex++
+            ) {
+                if (tweetIdsByCell.has(orderedCells[nextIndex])) {
+                    nextCell = orderedCells[nextIndex];
+                    break;
+                }
+            }
+
+            if (!nextCell || !desiredHiddenCells.has(nextCell)) {
+                continue;
+            }
+
+            const nextTweetId = tweetIdsByCell.get(nextCell);
+            const authorUsername = tweetAuthors.get(tweetId) || '';
+            const nextAuthorUsername =
+                tweetAuthors.get(nextTweetId) || '';
+
+            if (
+                !authorUsername ||
+                !nextAuthorUsername ||
+                authorUsername === nextAuthorUsername
+            ) {
+                continue;
+            }
+
+            desiredHiddenCells.add(cell);
+            rememberedHiddenHomeTweetIds.add(tweetId);
         }
 
         for (const cell of hiddenCells) {
