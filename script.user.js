@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      3.0.4
+// @version      3.0.5
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -4177,6 +4177,50 @@
     const markedAllRootTweetIdsByContext =
         new Map();
 
+    const pinnedAllTweetIdsByProfile =
+        new Map();
+
+    const pinnedAllEntriesByProfile =
+        new Map();
+
+    const pinnedAllEntriesByUserId =
+        new Map();
+
+    function getPinnedAllTweetIds(profileUsername) {
+        const key = String(profileUsername || '').toLowerCase();
+        if (!pinnedAllTweetIdsByProfile.has(key)) {
+            pinnedAllTweetIdsByProfile.set(key, new Set());
+        }
+        return pinnedAllTweetIdsByProfile.get(key);
+    }
+
+    function getPinnedAllEntries(profileUsername) {
+        const key = String(profileUsername || '').toLowerCase();
+        return pinnedAllEntriesByProfile.get(key) || [];
+    }
+
+    function getAllTimelineRequestContext(requestUrl) {
+        try {
+            const url = new URL(requestUrl, location.origin);
+            const rawVariables =
+                url.searchParams.get('variables');
+            const variables = rawVariables
+                ? JSON.parse(rawVariables)
+                : {};
+
+            return {
+                userId: String(variables?.userId || ''),
+                hasCursor: Boolean(variables?.cursor)
+            };
+        }
+        catch (e) {
+            return {
+                userId: '',
+                hasCursor: false
+            };
+        }
+    }
+
     function getHiddenAllTweetIds(
         profileUsername,
         authenticatedUsername
@@ -4250,6 +4294,172 @@
         }
     }
 
+    function isPinnedTimelineEntry(entry) {
+        const content = entry?.content;
+        if (!content) return false;
+        if (
+            content.clientEventInfo?.component === 'pinned_tweets'
+        ) {
+            return true;
+        }
+        return getTimelineEntryItemContents(entry).some(itemContent =>
+            itemContent?.socialContext?.contextType === 'Pin'
+        );
+    }
+
+    function collectPinnedTimelineEntries(instructions) {
+        const pinnedEntries = [];
+
+        for (const instruction of instructions) {
+            const entries = [];
+            if (instruction?.entry) entries.push(instruction.entry);
+            if (Array.isArray(instruction?.entries)) {
+                entries.push(...instruction.entries);
+            }
+            for (const entry of entries) {
+                if (!isPinnedTimelineEntry(entry)) continue;
+                pinnedEntries.push(entry);
+            }
+        }
+
+        return pinnedEntries;
+    }
+
+    function rememberPinnedTimelineEntries(
+        instructions,
+        pinnedTweetIds,
+        profileUsername,
+        requestUserId
+    ) {
+        const pinnedEntries =
+            collectPinnedTimelineEntries(instructions);
+
+        if (!pinnedEntries.length) return;
+
+        pinnedTweetIds.clear();
+
+        for (const entry of pinnedEntries) {
+            rememberTimelineEntryTweetIds(entry, pinnedTweetIds);
+        }
+
+        if (!profileUsername && !requestUserId) return;
+
+        const cloneEntries = () => pinnedEntries.map(entry => {
+            try {
+                return JSON.parse(JSON.stringify(entry));
+            }
+            catch (e) {
+                return entry;
+            }
+        });
+
+        if (profileUsername) {
+            pinnedAllEntriesByProfile.set(
+                String(profileUsername).toLowerCase(),
+                cloneEntries()
+            );
+        }
+
+        if (requestUserId) {
+            pinnedAllEntriesByUserId.set(
+                String(requestUserId),
+                cloneEntries()
+            );
+        }
+    }
+
+    function getPinnedTimelineProfileUsername(instructions) {
+        for (const instruction of instructions) {
+            const entries = [];
+            if (instruction?.entry) entries.push(instruction.entry);
+            if (Array.isArray(instruction?.entries)) {
+                entries.push(...instruction.entries);
+            }
+
+            for (const entry of entries) {
+                if (!isPinnedTimelineEntry(entry)) continue;
+
+                for (const itemContent of
+                    getTimelineEntryItemContents(entry)) {
+                    const username =
+                        getTimelineTweetUsername(
+                            getTimelineItemTweet(itemContent)
+                        );
+
+                    if (username) return username;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    function mergePinnedEntriesIntoAllTimeline(
+        instructions,
+        rememberedPinnedEntries = []
+    ) {
+        const pinnedEntries = [];
+        const pinnedInstructions = [];
+
+        for (let index = 0; index < instructions.length; index++) {
+            const instruction = instructions[index];
+            if (
+                instruction?.entry &&
+                isPinnedTimelineEntry(instruction.entry)
+            ) {
+                pinnedEntries.push(instruction.entry);
+                pinnedInstructions.push(index);
+            }
+        }
+
+        pinnedEntries.push(...rememberedPinnedEntries);
+
+        if (!pinnedEntries.length) return false;
+
+        const targetInstruction = instructions.find(instruction =>
+            Array.isArray(instruction?.entries)
+        );
+        if (!targetInstruction) return false;
+
+        const existingEntryIds = new Set(
+            targetInstruction.entries
+                .map(entry => String(entry?.entryId || ''))
+                .filter(Boolean)
+        );
+        const existingTweetIds = new Set();
+        for (const entry of targetInstruction.entries) {
+            rememberTimelineEntryTweetIds(entry, existingTweetIds);
+        }
+
+        const additions = [];
+        for (const entry of pinnedEntries) {
+            const tweetIds = new Set();
+            rememberTimelineEntryTweetIds(entry, tweetIds);
+            const entryId = String(entry?.entryId || '');
+            const alreadyPresent =
+                (entryId && existingEntryIds.has(entryId)) ||
+                Array.from(tweetIds).some(tweetId =>
+                    existingTweetIds.has(tweetId)
+                );
+            if (alreadyPresent) continue;
+            additions.push(entry);
+            if (entryId) existingEntryIds.add(entryId);
+            for (const tweetId of tweetIds) {
+                existingTweetIds.add(tweetId);
+            }
+        }
+
+        if (additions.length) {
+            targetInstruction.entries.unshift(...additions);
+        }
+
+        for (let index = pinnedInstructions.length - 1; index >= 0; index--) {
+            instructions.splice(pinnedInstructions[index], 1);
+        }
+
+        return additions.length > 0 || pinnedInstructions.length > 0;
+    }
+
     function shouldRemoveAllTimelineEntry(
         entry,
         profileUsername,
@@ -4318,31 +4528,11 @@
         return false;
     }
 
-    function filterAllTimelineJson(json) {
+    function filterAllTimelineJson(json, requestUrl = '') {
         const match =
             location.pathname.match(
                 /^\/([A-Za-z0-9_]{1,15})\/all\/?$/
             );
-
-        if (
-            !match ||
-            !isEnabled(
-                userSettings.hideOtherMentionsInAll
-            )
-        ) {
-            return false;
-        }
-
-        const profileUsername =
-            match[1].toLowerCase();
-
-        const authenticatedUsername =
-            getAuthenticatedUsername()
-                .toLowerCase();
-
-        if (!authenticatedUsername) {
-            return false;
-        }
 
         const instructions =
             json
@@ -4359,11 +4549,76 @@
 
         let changed = false;
 
+        const requestContext =
+            getAllTimelineRequestContext(requestUrl);
+
+        const responseProfileUsername =
+            getPinnedTimelineProfileUsername(instructions);
+
+        const profileUsername = match
+            ? match[1].toLowerCase()
+            : responseProfileUsername;
+
+        const pinnedTweetIds = profileUsername
+            ? getPinnedAllTweetIds(profileUsername)
+            : new Set();
+
+        rememberPinnedTimelineEntries(
+            instructions,
+            pinnedTweetIds,
+            profileUsername,
+            requestContext.userId
+        );
+
+        const rememberedPinnedEntries = [
+            ...(profileUsername
+                ? getPinnedAllEntries(profileUsername)
+                : []),
+            ...(requestContext.userId
+                ? pinnedAllEntriesByUserId.get(
+                    requestContext.userId
+                ) || []
+                : [])
+        ];
+
+        if (
+            !requestContext.hasCursor &&
+            mergePinnedEntriesIntoAllTimeline(
+                instructions,
+                rememberedPinnedEntries
+            )
+        ) {
+            changed = true;
+        }
+
+        // UserTweetsAndReplies can arrive before the initial route changes
+        // to /username/all. Preserve pinned entries during that transition,
+        // but only apply the reply filter on the actual All route.
+        if (!match) {
+            return changed;
+        }
+
+        if (!isEnabled(userSettings.hideOtherMentionsInAll)) {
+            return changed;
+        }
+
+        const authenticatedUsername =
+            getAuthenticatedUsername()
+                .toLowerCase();
+
+        if (!authenticatedUsername) {
+            return changed;
+        }
+
         const rememberedTweetIds =
             getHiddenAllTweetIds(
                 profileUsername,
                 authenticatedUsername
             );
+
+        for (const tweetId of pinnedTweetIds) {
+            rememberedTweetIds.delete(tweetId);
+        }
 
         for (const instruction of instructions) {
             if (!Array.isArray(instruction?.entries)) {
@@ -4374,6 +4629,14 @@
 
             const filteredEntries =
                 entries.filter(entry => {
+                    if (isPinnedTimelineEntry(entry)) {
+                        rememberTimelineEntryTweetIds(
+                            entry,
+                            pinnedTweetIds
+                        );
+                        return true;
+                    }
+
                     if (
                         Array.isArray(
                             entry?.content?.items
@@ -4440,7 +4703,10 @@
                 const json = JSON.parse(value);
 
                 xhr[cacheKey] =
-                    filterAllTimelineJson(json)
+                    filterAllTimelineJson(
+                        json,
+                        xhr.__rtUrl
+                    )
                         ? JSON.stringify(json)
                         : value;
 
@@ -4452,7 +4718,10 @@
         }
 
         if (value && typeof value === 'object') {
-            filterAllTimelineJson(value);
+            filterAllTimelineJson(
+                value,
+                xhr.__rtUrl
+            );
         }
 
         return value;
@@ -4637,7 +4906,10 @@
                                     const json =
                                         await target.json();
 
-                                    filterAllTimelineJson(json);
+                                    filterAllTimelineJson(
+                                        json,
+                                        requestUrl
+                                    );
 
                                     return json;
                                 };
@@ -4653,7 +4925,8 @@
                                             JSON.parse(text);
 
                                         return filterAllTimelineJson(
-                                            json
+                                            json,
+                                            requestUrl
                                         )
                                             ? JSON.stringify(json)
                                             : text;
@@ -4794,35 +5067,16 @@
     // Link click handling
     // ============================================================
 
-    function redirectNativeProfileSelectionToAll(
-        username,
-        previousPath
-    ) {
-        for (const delay of [0, 50, 150, 300]) {
-            setTimeout(
-                function () {
-                    const currentPath =
-                        location.pathname.replace(/\/$/, '');
-
-                    if (
-                        currentPath === previousPath ||
-                        !isEnabled(
-                            userSettings.openProfileFromAll
-                        )
-                    ) {
-                        return;
-                    }
-
-                    if (
-                        currentPath.toLowerCase() ===
-                            ('/' + username).toLowerCase()
-                    ) {
-                        navigate('/' + username + '/all');
-                    }
-                },
-                delay
-            );
-        }
+    function isUserSelectionOnlyContext(userCell) {
+        return Boolean(
+            userCell.closest(
+                '[role="dialog"], ' +
+                '[data-testid="sheetDialog"]'
+            ) ||
+            /^\/i\/flow\/(?:report|appeal)/.test(
+                location.pathname
+            )
+        );
     }
 
     document.addEventListener(
@@ -4864,11 +5118,17 @@
                             userCell
                         );
 
-                    if (username) {
-                        redirectNativeProfileSelectionToAll(
-                            username,
-                            location.pathname.replace(/\/$/, '')
-                        );
+                    if (
+                        username &&
+                        isEnabled(
+                            userSettings.openProfileFromAll
+                        ) &&
+                        !isUserSelectionOnlyContext(userCell)
+                    ) {
+                        event.preventDefault();
+                        event.stopImmediatePropagation();
+
+                        navigate('/' + username + '/all');
 
                         return;
                     }
@@ -5226,7 +5486,8 @@
 
     function refreshRememberedAllCell(
         cell,
-        rememberedTweetIds
+        rememberedTweetIds,
+        pinnedTweetIds
     ) {
         const currentTweetId =
             getAllCellTweetId(cell);
@@ -5236,6 +5497,7 @@
         }
 
         const shouldHide =
+            !pinnedTweetIds.has(currentTweetId) &&
             rememberedTweetIds.has(currentTweetId);
 
         cell.classList.toggle(
@@ -5287,6 +5549,15 @@
                     authenticatedUsername
                 );
 
+            const pinnedTweetIds =
+                getPinnedAllTweetIds(
+                    match[1].toLowerCase()
+                );
+
+            for (const tweetId of pinnedTweetIds) {
+                rememberedTweetIds.delete(tweetId);
+            }
+
             const cells = new Set();
 
             for (const record of records) {
@@ -5330,7 +5601,8 @@
             for (const cell of cells) {
                 refreshRememberedAllCell(
                     cell,
-                    rememberedTweetIds
+                    rememberedTweetIds,
+                    pinnedTweetIds
                 );
             }
         });
@@ -5722,11 +5994,21 @@
                 authenticatedUsername
             );
 
+        const pinnedTweetIds =
+            getPinnedAllTweetIds(profileUsername);
+
+        for (const tweetId of pinnedTweetIds) {
+            rememberedTweetIds.delete(tweetId);
+        }
+
         const retainedRootTweetIds =
             new Set(rememberedRootTweetIds);
 
         for (const tweetId of cellsByTweetId.keys()) {
-            if (rememberedTweetIds.has(tweetId)) {
+            if (
+                !pinnedTweetIds.has(tweetId) &&
+                rememberedTweetIds.has(tweetId)
+            ) {
                 hiddenTweetIds.add(tweetId);
             }
         }
@@ -5735,6 +6017,13 @@
             const { article, tweetId } of
             articleData
         ) {
+            if (tweetId && pinnedTweetIds.has(tweetId)) {
+                article.closest(
+                    '[data-testid="cellInnerDiv"]'
+                )?.classList.remove(hiddenOtherMentionClass);
+                continue;
+            }
+
             const authorLink =
                 article.querySelector(
                     '[data-testid="User-Name"] a[href]'
@@ -5991,6 +6280,11 @@
             rememberedTweetIds.add(tweetId);
         }
 
+        for (const tweetId of pinnedTweetIds) {
+            hiddenTweetIds.delete(tweetId);
+            rememberedTweetIds.delete(tweetId);
+        }
+
         const desiredHiddenCells =
             new Set();
 
@@ -6036,6 +6330,12 @@
         }
 
         for (const [cell, tweetId] of tweetIdsByCell) {
+            if (pinnedTweetIds.has(tweetId)) {
+                desiredHiddenCells.delete(cell);
+                cell.classList.remove(hiddenOtherMentionClass);
+                continue;
+            }
+
             const authorUsername =
                 tweetAuthors.get(tweetId) || '';
 
@@ -6378,6 +6678,15 @@
                     pointer-events: none;
                 `;
             }
+        }
+
+        for (const tweetId of pinnedTweetIds) {
+            const cell = cellsByTweetId.get(tweetId);
+            if (!cell) continue;
+            hiddenTweetIds.delete(tweetId);
+            rememberedTweetIds.delete(tweetId);
+            desiredHiddenCells.delete(cell);
+            cell.classList.remove(hiddenOtherMentionClass);
         }
 
         const cellsToShow =
