@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      3.0.5
+// @version      3.0.6
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -94,8 +94,45 @@
         'logout',
         'compose',
         'jobs',
-        'communities'
+        'communities',
+        'follower_requests',
+        'bookmarks',
+        'lists',
+        'topics',
+        'premium',
+        'verified',
+        'connect_people',
+        'display',
+        'login',
+        'signup',
+        'account',
+        'about',
+        'help',
+        'tos',
+        'privacy',
+        'download',
+        'intent',
+        'share',
+        'hashtag',
+        'events',
+        'moments',
+        'analytics',
+        'ads',
+        'publish',
+        'spaces',
+        'subscriptions',
+        'monetization',
+        'professional'
     ]);
+
+    function isProfileUsername(value) {
+        const username = String(value || '');
+
+        return (
+            /^[A-Za-z0-9_]{1,15}$/.test(username) &&
+            !excludedPaths.has(username.toLowerCase())
+        );
+    }
 
     // ============================================================
     // Direct profile entry (new tab / new window)
@@ -122,10 +159,7 @@
 
         const username = parts[0];
 
-        if (
-            !/^[A-Za-z0-9_]{1,15}$/.test(username) ||
-            excludedPaths.has(username.toLowerCase())
-        ) {
+        if (!isProfileUsername(username)) {
             return false;
         }
 
@@ -822,11 +856,7 @@
 
         const username = parts[0];
 
-        if (
-            excludedPaths.has(
-                username.toLowerCase()
-            )
-        ) {
+        if (!isProfileUsername(username)) {
             return null;
         }
 
@@ -3072,9 +3102,7 @@
 
                     if (
                         profileRouteMatch &&
-                        !excludedPaths.has(
-                            profileRouteMatch[1].toLowerCase()
-                        )
+                        isProfileUsername(profileRouteMatch[1])
                     ) {
                         navigate(
                             '/' + profileRouteMatch[1] +
@@ -5337,11 +5365,7 @@
             const username =
                 profileMatch[1];
 
-            if (
-                excludedPaths.has(
-                    username.toLowerCase()
-                )
-            ) {
+            if (!isProfileUsername(username)) {
                 return;
             }
 
@@ -6825,9 +6849,7 @@
 
             const profileUsername =
                 pathUsername &&
-                !excludedPaths.has(
-                    pathUsername.toLowerCase()
-                )
+                isProfileUsername(pathUsername)
                     ? pathUsername
                     : '';
 
