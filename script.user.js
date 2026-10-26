@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      3.0.8
+// @version      3.0.9
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -6885,6 +6885,9 @@
     const hiddenHomeMentionClass =
         'x-hidden-home-mention';
 
+    const hiddenHomeReplyLinkClass =
+        'x-hidden-home-reply-link';
+
     const hideHomeMentionsActiveClass =
         'x-hide-home-mentions-active';
 
@@ -7001,7 +7004,9 @@
 
     hiddenOtherMentionStyle.textContent +=
         `.${hideHomeMentionsActiveClass} ` +
-        `.${hiddenHomeMentionClass}{display:none!important;}` +
+        `.${hiddenHomeMentionClass},` +
+        `.${hideHomeMentionsActiveClass} ` +
+        `.${hiddenHomeReplyLinkClass}{display:none!important;}` +
         `.${automaticHoverLookupClass} ` +
         '[data-testid="hoverCardParent"]{' +
         'visibility:hidden!important;' +
@@ -7379,6 +7384,11 @@
                 '.' + hiddenHomeMentionClass
             );
 
+        const hiddenReplyLinkCells =
+            document.querySelectorAll(
+                '.' + hiddenHomeReplyLinkClass
+            );
+
         const active =
             /^\/home\/?$/.test(
                 location.pathname
@@ -7401,6 +7411,12 @@
                 );
             }
 
+            for (const cell of hiddenReplyLinkCells) {
+                cell.classList.remove(
+                    hiddenHomeReplyLinkClass
+                );
+            }
+
             return;
         }
 
@@ -7412,6 +7428,12 @@
             for (const cell of hiddenCells) {
                 cell.classList.remove(
                     hiddenHomeMentionClass
+                );
+            }
+
+            for (const cell of hiddenReplyLinkCells) {
+                cell.classList.remove(
+                    hiddenHomeReplyLinkClass
                 );
             }
 
@@ -7703,6 +7725,46 @@
             tweetIdsByCell.set(cell, tweetId);
         }
 
+        const desiredHiddenReplyLinkCells =
+            new Set();
+
+        for (
+            let index = 0;
+            index < orderedCells.length;
+            index++
+        ) {
+            const cell = orderedCells[index];
+
+            if (
+                cell.querySelector(
+                    'article[data-testid="tweet"]'
+                ) ||
+                !cell.querySelector(
+                    'a[href^="/i/status/"]'
+                )
+            ) {
+                continue;
+            }
+
+            for (
+                let nextIndex = index + 1;
+                nextIndex < orderedCells.length;
+                nextIndex++
+            ) {
+                const nextCell = orderedCells[nextIndex];
+
+                if (!tweetIdsByCell.has(nextCell)) {
+                    continue;
+                }
+
+                if (desiredHiddenCells.has(nextCell)) {
+                    desiredHiddenReplyLinkCells.add(cell);
+                }
+
+                break;
+            }
+        }
+
         for (
             let index = 0;
             index < orderedCells.length;
@@ -7773,6 +7835,20 @@
         for (const cell of desiredHiddenCells) {
             cell.classList.add(
                 hiddenHomeMentionClass
+            );
+        }
+
+        for (const cell of hiddenReplyLinkCells) {
+            if (!desiredHiddenReplyLinkCells.has(cell)) {
+                cell.classList.remove(
+                    hiddenHomeReplyLinkClass
+                );
+            }
+        }
+
+        for (const cell of desiredHiddenReplyLinkCells) {
+            cell.classList.add(
+                hiddenHomeReplyLinkClass
             );
         }
     }
