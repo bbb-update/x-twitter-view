@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      3.0.6
+// @version      3.0.7
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -6297,6 +6297,41 @@
                 }
 
                 currentId = parentId;
+            }
+        }
+
+        // A reply continued under the profile owner's own previous reply has
+        // the owner as its direct target. If an earlier reply in that chain
+        // was hidden, keep hiding its same-author descendants as well.
+        // Repeat until stable because the timeline is usually newest-first.
+        let addedHiddenDescendant = true;
+
+        while (addedHiddenDescendant) {
+            addedHiddenDescendant = false;
+
+            for (const { tweetId } of articleData) {
+                if (
+                    !tweetId ||
+                    pinnedTweetIds.has(tweetId) ||
+                    hiddenTweetIds.has(tweetId) ||
+                    tweetAuthors.get(tweetId) !== profileUsername
+                ) {
+                    continue;
+                }
+
+                const parentId =
+                    replyParentIds.get(tweetId);
+
+                if (
+                    parentId &&
+                    (
+                        hiddenTweetIds.has(parentId) ||
+                        rememberedTweetIds.has(parentId)
+                    )
+                ) {
+                    hiddenTweetIds.add(tweetId);
+                    addedHiddenDescendant = true;
+                }
             }
         }
 
