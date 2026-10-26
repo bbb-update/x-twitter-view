@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      3.0.7
+// @version      3.0.8
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -3817,11 +3817,34 @@
                     legacy.id_str;
 
                 if (replyId) {
+                    const normalizedReplyTarget = String(
+                        legacy.in_reply_to_screen_name
+                    ).toLowerCase();
+
+                    const firstMention = String(
+                        legacy.entities
+                            ?.user_mentions?.[0]
+                            ?.screen_name || ''
+                    ).toLowerCase();
+
+                    const hasLeadingMention =
+                        firstMention &&
+                        String(legacy.full_text || '')
+                            .trimStart()
+                            .toLowerCase()
+                            .startsWith('@' + firstMention);
+
+                    const effectiveReplyTarget =
+                        hasLeadingMention &&
+                        tweetAuthor &&
+                        normalizedReplyTarget === tweetAuthor &&
+                        firstMention !== tweetAuthor
+                            ? firstMention
+                            : normalizedReplyTarget;
+
                     replyTargets.set(
                         String(replyId),
-                        String(
-                            legacy.in_reply_to_screen_name
-                        )
+                        effectiveReplyTarget
                     );
 
                     if (legacy.in_reply_to_status_id_str) {
@@ -4161,19 +4184,15 @@
         ).toLowerCase();
     }
 
-    function getTimelineTweetTarget(tweet) {
+    function getTimelineTweetTarget(
+        tweet,
+        profileUsername = '',
+        authenticatedUsername = ''
+    ) {
         const legacy = tweet?.legacy;
 
         if (!legacy) {
             return '';
-        }
-
-        const replyTarget =
-            legacy.in_reply_to_screen_name;
-
-        if (replyTarget) {
-            return String(replyTarget)
-                .toLowerCase();
         }
 
         const firstMention =
@@ -4181,19 +4200,42 @@
                 ?.user_mentions?.[0]
                 ?.screen_name || '';
 
-        if (
-            firstMention &&
+        const normalizedFirstMention =
+            String(firstMention).toLowerCase();
+
+        const hasLeadingMention =
+            normalizedFirstMention &&
             String(legacy.full_text || '')
                 .trimStart()
                 .toLowerCase()
                 .startsWith(
-                    '@' +
-                    String(firstMention)
-                        .toLowerCase()
-                )
+                    '@' + normalizedFirstMention
+                );
+
+        const replyTarget = String(
+            legacy.in_reply_to_screen_name || ''
+        ).toLowerCase();
+
+        if (replyTarget) {
+            if (
+                hasLeadingMention &&
+                (
+                    replyTarget === profileUsername ||
+                    replyTarget === authenticatedUsername
+                ) &&
+                normalizedFirstMention !== profileUsername &&
+                normalizedFirstMention !== authenticatedUsername
+            ) {
+                return normalizedFirstMention;
+            }
+
+            return replyTarget;
+        }
+
+        if (
+            hasLeadingMention
         ) {
-            return String(firstMention)
-                .toLowerCase();
+            return normalizedFirstMention;
         }
 
         return '';
@@ -4515,7 +4557,11 @@
             }
 
             const targetUsername =
-                getTimelineTweetTarget(tweet);
+                getTimelineTweetTarget(
+                    tweet,
+                    profileUsername,
+                    authenticatedUsername
+                );
 
             if (!targetUsername) {
                 return false;
@@ -6116,18 +6162,37 @@
                     ? replyTargets.get(tweetId)
                     : null;
 
-            let targetUsername =
-                replyTarget ||
-                (
-                    targetMatch &&
-                    mentionText.startsWith('@')
-                        ? targetMatch[1]
-                        : null
-                );
+            const leadingMentionUsername =
+                targetMatch &&
+                mentionText.startsWith('@')
+                    ? targetMatch[1]
+                    : null;
+
+            let targetUsername = replyTarget ||
+                leadingMentionUsername;
 
             let normalizedTargetUsername =
                 String(targetUsername || '')
                     .toLowerCase();
+
+            const normalizedLeadingMentionUsername =
+                String(leadingMentionUsername || '')
+                    .toLowerCase();
+
+            if (
+                normalizedLeadingMentionUsername &&
+                (
+                    normalizedTargetUsername === profileUsername ||
+                    normalizedTargetUsername === authenticatedUsername
+                ) &&
+                normalizedLeadingMentionUsername !== profileUsername &&
+                normalizedLeadingMentionUsername !==
+                    authenticatedUsername
+            ) {
+                targetUsername = leadingMentionUsername;
+                normalizedTargetUsername =
+                    normalizedLeadingMentionUsername;
+            }
 
             if (
                 tweetId &&
