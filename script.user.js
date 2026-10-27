@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      3.0.9
+// @version      3.1.0
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -4256,6 +4256,12 @@
     const pinnedAllEntriesByUserId =
         new Map();
 
+    const responseOnlyMentionFilterProfiles =
+        new Set();
+
+    const ownLongConversationEntriesByProfile =
+        new Map();
+
     function getPinnedAllTweetIds(profileUsername) {
         const key = String(profileUsername || '').toLowerCase();
         if (!pinnedAllTweetIdsByProfile.has(key)) {
@@ -4362,6 +4368,211 @@
                 );
             }
         }
+    }
+
+    function rememberLongOwnConversationProfile(
+        instructions,
+        profileUsername
+    ) {
+        if (!profileUsername) {
+            return;
+        }
+
+        for (const instruction of instructions) {
+            if (!Array.isArray(instruction?.entries)) {
+                continue;
+            }
+
+            for (const entry of instruction.entries) {
+                const allTweetIds =
+                    entry?.content
+                        ?.metadata
+                        ?.conversationMetadata
+                        ?.allTweetIds;
+
+                if (
+                    !Array.isArray(allTweetIds) ||
+                    allTweetIds.length < 6
+                ) {
+                    continue;
+                }
+
+                const rootTweetId =
+                    String(allTweetIds[0] || '');
+
+                const ownsRoot =
+                    getTimelineEntryItemContents(entry)
+                        .some(itemContent => {
+                            const tweet =
+                                getTimelineItemTweet(itemContent);
+
+                            const tweetId = String(
+                                tweet?.rest_id ||
+                                tweet?.legacy?.id_str ||
+                                ''
+                            );
+
+                            return (
+                                tweetId === rootTweetId &&
+                                getTimelineTweetUsername(tweet) ===
+                                    profileUsername
+                            );
+                        });
+
+                if (ownsRoot) {
+                    responseOnlyMentionFilterProfiles.add(
+                        profileUsername
+                    );
+                    return;
+                }
+            }
+        }
+    }
+
+    function rememberOwnLongConversationEntries(
+        instructions,
+        profileUsername
+    ) {
+        if (!profileUsername) return false;
+
+        const rememberedEntries = new Map();
+        let normalizedEntryId = false;
+
+        for (const instruction of instructions) {
+            if (!Array.isArray(instruction?.entries)) {
+                continue;
+            }
+
+            for (const entry of instruction.entries) {
+                const allTweetIds =
+                    entry?.content
+                        ?.metadata
+                        ?.conversationMetadata
+                        ?.allTweetIds;
+
+                if (
+                    !Array.isArray(allTweetIds) ||
+                    allTweetIds.length < 6
+                ) {
+                    continue;
+                }
+
+                const rootTweetId =
+                    String(allTweetIds[0] || '');
+
+                const ownsOriginalRoot =
+                    getTimelineEntryItemContents(entry)
+                        .some(itemContent => {
+                            const tweet =
+                                getTimelineItemTweet(itemContent);
+
+                            const tweetId = String(
+                                tweet?.rest_id ||
+                                tweet?.legacy?.id_str ||
+                                ''
+                            );
+
+                            const conversationId = String(
+                                tweet?.legacy
+                                    ?.conversation_id_str ||
+                                ''
+                            );
+
+                            const parentId = String(
+                                tweet?.legacy
+                                    ?.in_reply_to_status_id_str ||
+                                ''
+                            );
+
+                            return (
+                                tweetId === rootTweetId &&
+                                conversationId === rootTweetId &&
+                                !parentId &&
+                                getTimelineTweetUsername(tweet) ===
+                                    profileUsername
+                            );
+                        });
+
+                if (!ownsOriginalRoot) continue;
+
+                const stableEntryId =
+                    'profile-conversation-' +
+                    rootTweetId;
+
+                if (entry.entryId !== stableEntryId) {
+                    entry.entryId = stableEntryId;
+                    normalizedEntryId = true;
+                }
+
+                const entryId = stableEntryId;
+
+                if (!entryId) continue;
+
+                try {
+                    rememberedEntries.set(
+                        entryId,
+                        JSON.parse(JSON.stringify(entry))
+                    );
+                }
+                catch (e) {
+                    rememberedEntries.set(entryId, entry);
+                }
+            }
+        }
+
+        if (rememberedEntries.size) {
+            ownLongConversationEntriesByProfile.set(
+                profileUsername,
+                rememberedEntries
+            );
+        }
+
+        return normalizedEntryId;
+    }
+
+    function mergeRememberedOwnLongConversations(
+        instructions,
+        profileUsername
+    ) {
+        const rememberedEntries =
+            ownLongConversationEntriesByProfile.get(
+                profileUsername
+            );
+
+        if (!rememberedEntries?.size) return false;
+
+        const targetInstruction = instructions.find(
+            instruction =>
+                Array.isArray(instruction?.entries)
+        );
+
+        if (!targetInstruction) return false;
+
+        const existingEntryIds = new Set(
+            targetInstruction.entries
+                .map(entry => String(entry?.entryId || ''))
+                .filter(Boolean)
+        );
+
+        const additions = [];
+
+        for (const [entryId, entry] of rememberedEntries) {
+            if (existingEntryIds.has(entryId)) continue;
+
+            try {
+                additions.push(
+                    JSON.parse(JSON.stringify(entry))
+                );
+            }
+            catch (e) {
+                additions.push(entry);
+            }
+        }
+
+        if (!additions.length) return false;
+
+        targetInstruction.entries.unshift(...additions);
+        return true;
     }
 
     function isPinnedTimelineEntry(entry) {
@@ -4602,6 +4813,43 @@
         return false;
     }
 
+    function hasOwnOriginalRoot(
+        entry,
+        profileUsername
+    ) {
+        const allTweetIds =
+            entry?.content
+                ?.metadata
+                ?.conversationMetadata
+                ?.allTweetIds;
+
+        if (!Array.isArray(allTweetIds) || !allTweetIds.length) {
+            return false;
+        }
+
+        const rootTweetId = String(allTweetIds[0] || '');
+
+        return getTimelineEntryItemContents(entry)
+            .some(itemContent => {
+                const tweet =
+                    getTimelineItemTweet(itemContent);
+
+                const tweetId = String(
+                    tweet?.rest_id ||
+                    tweet?.legacy?.id_str ||
+                    ''
+                );
+
+                return (
+                    tweetId === rootTweetId &&
+                    !tweet?.legacy
+                        ?.in_reply_to_status_id_str &&
+                    getTimelineTweetUsername(tweet) ===
+                        profileUsername
+                );
+            });
+    }
+
     function filterAllTimelineJson(json, requestUrl = '') {
         const match =
             location.pathname.match(
@@ -4632,6 +4880,25 @@
         const profileUsername = match
             ? match[1].toLowerCase()
             : responseProfileUsername;
+
+        if (!requestContext.hasCursor) {
+            if (
+                rememberOwnLongConversationEntries(
+                    instructions,
+                    profileUsername
+                )
+            ) {
+                changed = true;
+            }
+        }
+        else if (
+            mergeRememberedOwnLongConversations(
+                instructions,
+                profileUsername
+            )
+        ) {
+            changed = true;
+        }
 
         const pinnedTweetIds = profileUsername
             ? getPinnedAllTweetIds(profileUsername)
@@ -4701,40 +4968,37 @@
 
             const entries = instruction.entries;
 
-            const filteredEntries =
-                entries.filter(entry => {
-                    if (isPinnedTimelineEntry(entry)) {
-                        rememberTimelineEntryTweetIds(
-                            entry,
-                            pinnedTweetIds
-                        );
-                        return true;
-                    }
+            const filteredEntries = entries.filter(entry => {
+                if (isPinnedTimelineEntry(entry)) {
+                    rememberTimelineEntryTweetIds(
+                        entry,
+                        pinnedTweetIds
+                    );
+                    return true;
+                }
 
-                    if (
-                        Array.isArray(
-                            entry?.content?.items
-                        )
-                    ) {
-                        return true;
-                    }
-
-                    const remove =
-                        shouldRemoveAllTimelineEntry(
+                const remove =
+                    shouldRemoveAllTimelineEntry(
                         entry,
                         profileUsername,
                         authenticatedUsername
-                        );
+                    );
 
-                    if (remove) {
-                        rememberTimelineEntryTweetIds(
-                            entry,
-                            rememberedTweetIds
-                        );
-                    }
+                if (!remove) return true;
 
-                    return !remove;
-                });
+                rememberTimelineEntryTweetIds(
+                    entry,
+                    rememberedTweetIds
+                );
+
+                // Keep a module whose original root belongs to the profile
+                // owner. Its individual reply cells are hidden by the DOM
+                // filter without sacrificing the owner's original post.
+                return hasOwnOriginalRoot(
+                    entry,
+                    profileUsername
+                );
+            });
 
             if (filteredEntries.length !== entries.length) {
                 instruction.entries = filteredEntries;
@@ -4968,6 +5232,36 @@
                     return response;
                 }
 
+                let filteredJson = null;
+                let filteredText = '';
+
+                try {
+                    const originalText =
+                        await response.clone().text();
+
+                    filteredJson =
+                        JSON.parse(originalText);
+
+                    if (
+                        !filterAllTimelineJson(
+                            filteredJson,
+                            requestUrl
+                        )
+                    ) {
+                        // Do not wrap an unchanged Response. X keeps the
+                        // original object in its virtual timeline cache and
+                        // needs its native identity when restoring entries
+                        // that have scrolled out of view.
+                        return response;
+                    }
+
+                    filteredText =
+                        JSON.stringify(filteredJson);
+                }
+                catch (e) {
+                    return response;
+                }
+
                 return new Proxy(
                     response,
                     {
@@ -4977,37 +5271,13 @@
                         ) {
                             if (property === 'json') {
                                 return async function () {
-                                    const json =
-                                        await target.json();
-
-                                    filterAllTimelineJson(
-                                        json,
-                                        requestUrl
-                                    );
-
-                                    return json;
+                                    return filteredJson;
                                 };
                             }
 
                             if (property === 'text') {
                                 return async function () {
-                                    const text =
-                                        await target.text();
-
-                                    try {
-                                        const json =
-                                            JSON.parse(text);
-
-                                        return filterAllTimelineJson(
-                                            json,
-                                            requestUrl
-                                        )
-                                            ? JSON.stringify(json)
-                                            : text;
-                                    }
-                                    catch (e) {
-                                        return text;
-                                    }
+                                    return filteredText;
                                 };
                             }
 
@@ -5589,6 +5859,8 @@
         }
     }
 
+    let pendingAllMentionRefresh = false;
+
     const hiddenAllCellObserver =
         new MutationObserver(function (records) {
             const match =
@@ -5605,30 +5877,7 @@
                 return;
             }
 
-            const authenticatedUsername =
-                getAuthenticatedUsername()
-                    .toLowerCase();
-
-            if (!authenticatedUsername) {
-                return;
-            }
-
-            const rememberedTweetIds =
-                getHiddenAllTweetIds(
-                    match[1].toLowerCase(),
-                    authenticatedUsername
-                );
-
-            const pinnedTweetIds =
-                getPinnedAllTweetIds(
-                    match[1].toLowerCase()
-                );
-
-            for (const tweetId of pinnedTweetIds) {
-                rememberedTweetIds.delete(tweetId);
-            }
-
-            const cells = new Set();
+            let hasRelevantCell = false;
 
             for (const record of records) {
                 const targetCell =
@@ -5638,7 +5887,8 @@
                         );
 
                 if (targetCell) {
-                    cells.add(targetCell);
+                    hasRelevantCell = true;
+                    break;
                 }
 
                 for (const node of record.addedNodes) {
@@ -5656,25 +5906,36 @@
                             );
 
                     if (addedCell) {
-                        cells.add(addedCell);
+                        hasRelevantCell = true;
+                        break;
                     }
 
-                    for (const cell of
-                        node.querySelectorAll(
+                    if (
+                        node.querySelector(
                             '[data-testid="cellInnerDiv"]'
-                        )) {
-                        cells.add(cell);
+                        )
+                    ) {
+                        hasRelevantCell = true;
+                        break;
                     }
                 }
+
+                if (hasRelevantCell) break;
             }
 
-            for (const cell of cells) {
-                refreshRememberedAllCell(
-                    cell,
-                    rememberedTweetIds,
-                    pinnedTweetIds
-                );
+            if (
+                !hasRelevantCell ||
+                pendingAllMentionRefresh
+            ) {
+                return;
             }
+
+            pendingAllMentionRefresh = true;
+
+            requestAnimationFrame(function () {
+                pendingAllMentionRefresh = false;
+                refreshOtherMentionsInAll();
+            });
         });
 
     hiddenAllCellObserver.observe(
@@ -5923,6 +6184,9 @@
                 /^\/([A-Za-z0-9_]{1,15})\/all\/?$/
             );
 
+        const profileUsername =
+            match?.[1]?.toLowerCase() || '';
+
         const active =
             Boolean(match) &&
             isEnabled(
@@ -5960,9 +6224,6 @@
 
             return;
         }
-
-        const profileUsername =
-            match[1].toLowerCase();
 
         const authenticatedUsername =
             getAuthenticatedUsername()
