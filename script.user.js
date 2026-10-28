@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X - Default All + Legacy Media
 // @namespace    x-profile-media-control.pub
-// @version      3.1.0
+// @version      3.1.1
 // @author       bbb
 // @description  Default profile to All, restore legacy mixed Media, add Media/Likes shortcut buttons, SPA navigation
 // @match        https://x.com/*
@@ -16,6 +16,149 @@
 
 (function () {
     'use strict';
+
+    function isNewXUi() {
+        const main = document.querySelector('main');
+        return Boolean(main && (
+            main.classList.contains('max-w-[602px]') ||
+            main.querySelector(
+                '[data-navigation-stop], [data-engagement-action], ' +
+                '[data-pinned-timeline], [data-slot="xds-button"]'
+            )
+        ));
+    }
+
+    function applyNewXUiCompatibility() {
+        const main = document.querySelector('main');
+        if (!isNewXUi() || !main) return false;
+
+        document.documentElement.classList.add('x-new-ui-compat');
+        main.setAttribute('data-testid', 'primaryColumn');
+
+        for (const article of main.querySelectorAll('article')) {
+            article.setAttribute('data-testid', 'tweet');
+            const cell = article.closest(
+                '[role="link"][data-href*="/status/"]'
+            ) || article.parentElement;
+            if (cell) cell.setAttribute('data-testid', 'cellInnerDiv');
+
+            const avatarLink = Array.from(article.querySelectorAll(
+                'a[href] img[alt^="@"]'
+            )).map(img => img.closest('a')).find(link =>
+                link && !link.closest('[data-slot="embedded-tweet-frame"]')
+            );
+            if (avatarLink) {
+                avatarLink.setAttribute('data-testid', 'Tweet-User-Avatar');
+                const username = String(
+                    avatarLink.querySelector('img[alt^="@"]')
+                        ?.getAttribute('alt') || ''
+                ).replace(/^@/, '');
+                if (username) {
+                    avatarLink.setAttribute(
+                        'data-testid',
+                        'UserAvatar-Container-' + username
+                    );
+                }
+            }
+
+            const nameGroup = Array.from(article.querySelectorAll(
+                '.x-middot-group'
+            )).find(node =>
+                !node.closest('[data-slot="embedded-tweet-frame"]')
+            );
+            if (nameGroup) nameGroup.setAttribute('data-testid', 'User-Name');
+
+            const tweetText = Array.from(article.querySelectorAll(
+                '.whitespace-pre-wrap.wrap-break-word'
+            )).find(node =>
+                !node.closest('[data-slot="embedded-tweet-frame"]')
+            );
+            if (tweetText) tweetText.setAttribute('data-testid', 'tweetText');
+
+            const statusLink = Array.from(article.querySelectorAll(
+                'a[href*="/status/"]'
+            )).find(link =>
+                /^\/[^/]+\/status\/\d+\/?$/.test(
+                    link.getAttribute('href') || ''
+                ) && !link.closest('[data-slot="embedded-tweet-frame"]')
+            );
+            if (statusLink && !statusLink.querySelector('time[datetime]')) {
+                const marker = document.createElement('time');
+                marker.setAttribute('datetime', '');
+                marker.hidden = true;
+                marker.className = 'x-new-ui-status-marker';
+                statusLink.appendChild(marker);
+            }
+
+            for (const action of article.querySelectorAll(
+                '[data-engagement-action]'
+            )) {
+                const type = action.getAttribute('data-engagement-action');
+                const control = action.matches('button, a')
+                    ? action
+                    : action.querySelector('button, a');
+                if (!control || ![
+                    'reply', 'retweet', 'like', 'bookmark', 'share'
+                ].includes(type)) continue;
+                const pressed = control.getAttribute('aria-pressed') === 'true';
+                control.setAttribute(
+                    'data-testid',
+                    pressed && type === 'retweet' ? 'unretweet' :
+                        pressed && type === 'like' ? 'unlike' : type
+                );
+                const count = control.querySelector('.x-animated-count-visual');
+                if (count) {
+                    count.setAttribute(
+                        'data-testid', 'app-text-transition-container'
+                    );
+                }
+            }
+
+            const repostIcon = Array.from(article.querySelectorAll(
+                'use[href="#icon-repost"]'
+            )).find(icon => !icon.closest('[data-engagement-action]'));
+            if (repostIcon) {
+                let context = repostIcon.closest('div');
+                while (
+                    context && context !== article &&
+                    !context.querySelector('a[href]')
+                ) {
+                    context = context.parentElement;
+                }
+                if (context && context !== article) {
+                    context.setAttribute('data-testid', 'socialContext');
+                }
+            }
+        }
+
+        for (const photo of main.querySelectorAll(
+            'a[href*="/photo/"] img[src*="pbs.twimg.com/media"]'
+        )) {
+            const host = photo.closest('a[href*="/photo/"]');
+            if (host) host.setAttribute('data-testid', 'tweetPhoto');
+        }
+
+        const nav = document.querySelector('nav');
+        if (nav) {
+            const profileLink = Array.from(nav.querySelectorAll('a[href]'))
+                .find(link => {
+                    const match = String(link.getAttribute('href') || '')
+                        .match(/^\/([A-Za-z0-9_]{1,15})\/?$/);
+                    return Boolean(match) && !new Set([
+                        'home', 'explore', 'notifications', 'messages',
+                        'compose', 'search', 'settings', 'bookmarks',
+                        'jobs', 'communities', 'i'
+                    ]).has(match[1].toLowerCase());
+                });
+            if (profileLink) {
+                profileLink.setAttribute(
+                    'data-testid', 'AppTabBar_Profile_Link'
+                );
+            }
+        }
+
+        return true;
+    }
 
     // ============================================================
     // ★ USER SETTINGS ★
@@ -4122,6 +4265,52 @@
         }
     }
 
+    function isAllProfileTimelineRequest(url) {
+        const text = String(url || '');
+        return (
+            text.includes('UserTweetsAndReplies') ||
+            /\/UserTweets(?:\?|$)/.test(text)
+        );
+    }
+
+    function isProfileMetadataRequest(url) {
+        return String(url || '').includes('UserByScreenName');
+    }
+
+    function rememberProfilePinnedMetadata(json) {
+        const user =
+            json?.data?.user?.result ||
+            json?.data?.user_result_by_screen_name?.result;
+
+        if (!user) return false;
+
+        const profileUsername = String(
+            user?.legacy?.screen_name ||
+            user?.core?.screen_name ||
+            ''
+        ).toLowerCase();
+
+        const pinnedIds =
+            user?.pinned_items?.tweet_ids_str ||
+            user?.legacy?.pinned_tweet_ids_str;
+
+        if (!profileUsername || !Array.isArray(pinnedIds)) {
+            return false;
+        }
+
+        const target = getPinnedAllTweetIds(profileUsername);
+        let changed = false;
+
+        for (const id of pinnedIds) {
+            const value = String(id || '');
+            if (!value || target.has(value)) continue;
+            target.add(value);
+            changed = true;
+        }
+
+        return changed;
+    }
+
     function isTimelineRequest(url) {
         if (
             typeof url !== 'string'
@@ -4129,18 +4318,10 @@
             return false;
         }
 
-        return (
-            url.includes(
-                '/graphql/'
-            ) &&
-            (
-                url.includes(
-                    'Timeline'
-                ) ||
-                url.includes(
-                    'timeline'
-                )
-            )
+        return url.includes('/graphql/') && (
+            /timeline/i.test(url) ||
+            /\/(?:UserTweets|UserTweetsAndReplies|TweetDetail)(?:\?|$)/
+                .test(url)
         );
     }
 
@@ -4368,6 +4549,180 @@
                 );
             }
         }
+    }
+
+    function rememberPinnedEntryTweetIds(
+        entry,
+        rememberedTweetIds
+    ) {
+        const itemContents = getTimelineEntryItemContents(entry);
+        const pinnedContents = itemContents.filter(
+            itemContent =>
+                itemContent?.socialContext?.contextType === 'Pin'
+        );
+
+        const contents = pinnedContents.length
+            ? pinnedContents
+            : itemContents;
+
+        for (const itemContent of contents) {
+            const tweet = getTimelineItemTweet(itemContent);
+            const tweetId =
+                tweet?.rest_id ||
+                tweet?.legacy?.id_str;
+            if (tweetId) rememberedTweetIds.add(String(tweetId));
+        }
+    }
+
+    function collectProfilePinnedTweetIds(
+        instructions,
+        profileUsername,
+        pinnedTweetIds
+    ) {
+        if (!profileUsername) return;
+
+        for (const instruction of instructions) {
+            const entries = [];
+            if (instruction?.entry) entries.push(instruction.entry);
+            if (Array.isArray(instruction?.entries)) {
+                entries.push(...instruction.entries);
+            }
+
+            for (const entry of entries) {
+                for (const itemContent of
+                    getTimelineEntryItemContents(entry)) {
+                    const tweet = getTimelineItemTweet(itemContent);
+                    const user = tweet
+                        ?.core
+                        ?.user_results
+                        ?.result;
+                    const username = String(
+                        user?.legacy?.screen_name ||
+                        user?.core?.screen_name ||
+                        ''
+                    ).toLowerCase();
+
+                    if (username !== profileUsername) continue;
+
+                    const ids = user
+                        ?.pinned_items
+                        ?.tweet_ids_str;
+
+                    if (!Array.isArray(ids)) continue;
+                    for (const id of ids) {
+                        if (id) pinnedTweetIds.add(String(id));
+                    }
+                }
+            }
+        }
+    }
+
+    function injectKnownPinnedInstructions(
+        instructions,
+        pinnedTweetIds
+    ) {
+        if (!pinnedTweetIds.size) return false;
+
+        const alreadyPinned = collectPinnedTimelineEntries(instructions);
+        const existingIds = new Set();
+        for (const entry of alreadyPinned) {
+            for (const itemContent of getTimelineEntryItemContents(entry)) {
+                const tweet = getTimelineItemTweet(itemContent);
+                const id = String(
+                    tweet?.rest_id || tweet?.legacy?.id_str || ''
+                );
+                if (id) existingIds.add(id);
+            }
+        }
+
+        const syntheticInstructions = [];
+
+        for (const pinnedId of pinnedTweetIds) {
+            if (existingIds.has(pinnedId)) continue;
+
+            let sourceContent = null;
+            let sourceSortIndex = null;
+
+            for (const instruction of instructions) {
+                const entries = [];
+                if (instruction?.entry) entries.push(instruction.entry);
+                if (Array.isArray(instruction?.entries)) {
+                    entries.push(...instruction.entries);
+                }
+
+                for (const entry of entries) {
+                    const matchingContent =
+                        getTimelineEntryItemContents(entry)
+                            .find(itemContent => {
+                                const tweet =
+                                    getTimelineItemTweet(itemContent);
+                                const id = String(
+                                    tweet?.rest_id ||
+                                    tweet?.legacy?.id_str ||
+                                    ''
+                                );
+                                return id === pinnedId;
+                            });
+
+                    if (!matchingContent) continue;
+                    sourceContent = matchingContent;
+                    sourceSortIndex = entry?.sortIndex || null;
+                    break;
+                }
+                if (sourceContent) break;
+            }
+
+            if (!sourceContent) continue;
+
+            let itemContent;
+            try {
+                itemContent = JSON.parse(JSON.stringify(sourceContent));
+            }
+            catch (e) {
+                itemContent = sourceContent;
+            }
+
+            itemContent.socialContext = {
+                contextType: 'Pin',
+                text: '固定',
+                type: 'TimelineGeneralContext'
+            };
+
+            const syntheticInstruction = {
+                entry: {
+                    content: {
+                        __typename: 'TimelineTimelineItem',
+                        clientEventInfo: {
+                            component: 'pinned_tweets',
+                            element: 'tweet'
+                        },
+                        entryType: 'TimelineTimelineItem',
+                        itemContent
+                    },
+                    entryId: `tweet-${pinnedId}`,
+                    sortIndex: sourceSortIndex || pinnedId
+                },
+                type: 'TimelinePinEntry'
+            };
+
+            Object.defineProperty(
+                syntheticInstruction,
+                '__xDefaultAllSyntheticPin',
+                { value: true }
+            );
+            syntheticInstructions.push(syntheticInstruction);
+        }
+
+        if (!syntheticInstructions.length) return false;
+
+        let insertIndex = 0;
+        for (let index = 0; index < instructions.length; index++) {
+            if (instructions[index]?.type === 'TimelineClearCache') {
+                insertIndex = index + 1;
+            }
+        }
+        instructions.splice(insertIndex, 0, ...syntheticInstructions);
+        return true;
     }
 
     function rememberLongOwnConversationProfile(
@@ -4620,7 +4975,7 @@
         pinnedTweetIds.clear();
 
         for (const entry of pinnedEntries) {
-            rememberTimelineEntryTweetIds(entry, pinnedTweetIds);
+            rememberPinnedEntryTweetIds(entry, pinnedTweetIds);
         }
 
         if (!profileUsername && !requestUserId) return;
@@ -4681,15 +5036,23 @@
     ) {
         const pinnedEntries = [];
         const pinnedInstructions = [];
+        const nativePinnedEntryIndexes = new Map();
 
         for (let index = 0; index < instructions.length; index++) {
             const instruction = instructions[index];
+            if (instruction?.__xDefaultAllSyntheticPin) {
+                continue;
+            }
             if (
                 instruction?.entry &&
                 isPinnedTimelineEntry(instruction.entry)
             ) {
                 pinnedEntries.push(instruction.entry);
                 pinnedInstructions.push(index);
+                nativePinnedEntryIndexes.set(
+                    instruction.entry,
+                    index
+                );
             }
         }
 
@@ -4713,6 +5076,7 @@
         }
 
         const additions = [];
+        const preservedPinnedInstructions = new Set();
         for (const entry of pinnedEntries) {
             const tweetIds = new Set();
             rememberTimelineEntryTweetIds(entry, tweetIds);
@@ -4722,7 +5086,18 @@
                 Array.from(tweetIds).some(tweetId =>
                     existingTweetIds.has(tweetId)
                 );
-            if (alreadyPresent) continue;
+            if (alreadyPresent) {
+                const nativeIndex =
+                    nativePinnedEntryIndexes.get(entry);
+                if (nativeIndex !== undefined) {
+                    // X can return the pinned tweet both as a native
+                    // TimelinePinEntry and again inside a conversation
+                    // module. Keep the native pin command; removing it
+                    // makes the tweet remain only in its lower-ranked spot.
+                    preservedPinnedInstructions.add(nativeIndex);
+                }
+                continue;
+            }
             additions.push(entry);
             if (entryId) existingEntryIds.add(entryId);
             for (const tweetId of tweetIds) {
@@ -4734,11 +5109,20 @@
             targetInstruction.entries.unshift(...additions);
         }
 
+        let removedPinnedInstructionCount = 0;
         for (let index = pinnedInstructions.length - 1; index >= 0; index--) {
-            instructions.splice(pinnedInstructions[index], 1);
+            const instructionIndex = pinnedInstructions[index];
+            if (preservedPinnedInstructions.has(instructionIndex)) {
+                continue;
+            }
+            instructions.splice(instructionIndex, 1);
+            removedPinnedInstructionCount++;
         }
 
-        return additions.length > 0 || pinnedInstructions.length > 0;
+        return (
+            additions.length > 0 ||
+            removedPinnedInstructionCount > 0
+        );
     }
 
     function shouldRemoveAllTimelineEntry(
@@ -4863,6 +5247,13 @@
                 ?.result
                 ?.timeline
                 ?.timeline
+                ?.instructions ||
+            json
+                ?.data
+                ?.user_result_by_screen_name
+                ?.result
+                ?.profile_with_replies_timeline_v2
+                ?.timeline
                 ?.instructions;
 
         if (!Array.isArray(instructions)) {
@@ -4903,6 +5294,21 @@
         const pinnedTweetIds = profileUsername
             ? getPinnedAllTweetIds(profileUsername)
             : new Set();
+
+        collectProfilePinnedTweetIds(
+            instructions,
+            profileUsername,
+            pinnedTweetIds
+        );
+
+        if (
+            injectKnownPinnedInstructions(
+                instructions,
+                pinnedTweetIds
+            )
+        ) {
+            changed = true;
+        }
 
         rememberPinnedTimelineEntries(
             instructions,
@@ -4970,7 +5376,7 @@
 
             const filteredEntries = entries.filter(entry => {
                 if (isPinnedTimelineEntry(entry)) {
-                    rememberTimelineEntryTweetIds(
+                    rememberPinnedEntryTweetIds(
                         entry,
                         pinnedTweetIds
                     );
@@ -4986,18 +5392,38 @@
 
                 if (!remove) return true;
 
+                // Keep a module whose original root belongs to the profile
+                // owner. Its individual reply cells are hidden by the DOM
+                // filter without sacrificing the owner's original post.
+                const keepOwnOriginalRoot = hasOwnOriginalRoot(
+                    entry,
+                    profileUsername
+                );
+
                 rememberTimelineEntryTweetIds(
                     entry,
                     rememberedTweetIds
                 );
 
-                // Keep a module whose original root belongs to the profile
-                // owner. Its individual reply cells are hidden by the DOM
-                // filter without sacrificing the owner's original post.
-                return hasOwnOriginalRoot(
-                    entry,
-                    profileUsername
-                );
+                if (keepOwnOriginalRoot) {
+                    const rootTweetId = String(
+                        entry?.content
+                            ?.metadata
+                            ?.conversationMetadata
+                            ?.allTweetIds?.[0] ||
+                        ''
+                    );
+
+                    if (rootTweetId) {
+                        rememberedTweetIds.delete(rootTweetId);
+                        getMarkedAllRootTweetIds(
+                            profileUsername,
+                            authenticatedUsername
+                        ).add(rootTweetId);
+                    }
+                }
+
+                return keepOwnOriginalRoot;
             });
 
             if (filteredEntries.length !== entries.length) {
@@ -5015,9 +5441,7 @@
         property
     ) {
         if (
-            !String(xhr.__rtUrl || '').includes(
-                'UserTweetsAndReplies'
-            )
+            !isAllProfileTimelineRequest(xhr.__rtUrl || '')
         ) {
             return value;
         }
@@ -5148,6 +5572,29 @@
             function (...args) {
 
                 if (
+                    typeof this.__rtUrl === 'string' &&
+                    isProfileMetadataRequest(this.__rtUrl)
+                ) {
+                    this.addEventListener(
+                        'load',
+                        () => {
+                            try {
+                                const value =
+                                    this.responseType === 'json'
+                                        ? this.response
+                                        : JSON.parse(
+                                            this.responseText ||
+                                            this.response ||
+                                            '{}'
+                                        );
+                                rememberProfilePinnedMetadata(value);
+                            }
+                            catch (e) {}
+                        }
+                    );
+                }
+
+                if (
                     typeof this.__rtUrl ===
                         'string' &&
                     isTimelineRequest(
@@ -5224,11 +5671,22 @@
                         ? args[0]
                         : args[0]?.url || '';
 
-                if (
-                    !String(requestUrl).includes(
-                        'UserTweetsAndReplies'
-                    )
-                ) {
+                if (isProfileMetadataRequest(requestUrl)) {
+                    try {
+                        const profileJson =
+                            await response.clone().json();
+                        rememberProfilePinnedMetadata(profileJson);
+                    }
+                    catch (e) {}
+                }
+
+                if (isTimelineRequest(String(requestUrl))) {
+                    response.clone().json().then(function (json) {
+                        scanRepostObject(json);
+                    }).catch(function () {});
+                }
+
+                if (!isAllProfileTimelineRequest(requestUrl)) {
                     return response;
                 }
 
@@ -8132,6 +8590,7 @@
                 tryFindHistory();
             }
 
+            applyNewXUiCompatibility();
             tryPatchFeatureSwitch();
 
             const currentLightTheme =
